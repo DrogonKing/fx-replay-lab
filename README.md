@@ -23,7 +23,7 @@ so "no network" is structural rather than a flag someone can forget.
 ## Verified state
 
 ```
-467 unit tests, 21 files ..................... pass
+505 unit tests, 22 files ..................... pass
 strict typecheck (noUncheckedIndexedAccess) ... clean
 offline verification ......................... PASS
 CI config validation ......................... PASS
@@ -69,6 +69,12 @@ Those backtest numbers are a **negative result for a plain EMA(9/21) crossover o
   honoured in both directions (a stop gaps *worse*, a limit gaps *better*), an order
   that would fill instantly is refused rather than silently converted, and a stop-limit
   arms at its trigger price. See `docs/ORDER-TYPES.md`.
+- **Position management**: entry/SL/TP drawn as dashed level lines with price tags, SL
+  and TP draggable on the chart. A drag that would put a stop on the wrong side of the
+  entry is refused with the reason shown — that shape is a guaranteed instant loss.
+  Auto break-even moves the stop to the entry (plus commission) once a position reaches
+  a configurable R multiple, and only ever tightens. See
+  `docs/POSITION-MANAGEMENT.md`.
 - **Journal**: entries with tags, R multiples, per-tag and per-month analytics, CSV
   export, row delete. **Closed trades are filed automatically** and tagged with the exit
   reason (`sl`, `tp`, `manual`, `stop-out`); money-at-risk is captured at entry so the R
@@ -118,6 +124,8 @@ bash scripts/draw-smoke.sh         # real pointer events paint; undo repaints
 bash scripts/persist-smoke.sh      # drawings survive kill -9 + relaunch
 bash scripts/journal-smoke.sh      # journal survives kill -9 + relaunch
 bash scripts/trade-smoke.sh        # trade -> SL fires -> journal entry, end to end
+bash scripts/orders-smoke.sh       # limit fills, invalid side refused, OCO pair
+bash scripts/position-smoke.sh     # level lines, real SL drag, break-even
 ```
 
 ## Docs

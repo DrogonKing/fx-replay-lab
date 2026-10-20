@@ -38,6 +38,9 @@ import {
   parseDrawings, serialiseDrawings, workspaceKey,
 } from "../core/persist.js";
 import { TradingSession } from "./trading.js";
+import {
+  positionLines, hitHandle, type PriceLine,
+} from "../core/position-manage.js";
 import { TradePanel } from "./panels/TradePanel.js";
 import { DataPanel } from "./panels/DataPanel.js";
 import { StrategyPanel } from "./panels/StrategyPanel.js";
@@ -400,6 +403,43 @@ export function App(): JSX.Element {
     overlayRef.current?.invalidate();
   }, []);
 
+  /**
+   * Test-only hook, enabled with `?test=1` in the URL.
+   *
+   * The smoke scripts need to drive the engine directly to assert that a drag reaches
+   * it; the DOM alone cannot prove that. Guarded by an explicit query flag so it is
+   * absent in normal runs, and it exposes nothing that is not already on screen.
+   */
+  useEffect(() => {
+    if (!window.location.search.includes("test=1")) return;
+    (window as unknown as { __fxlab?: unknown }).__fxlab = {
+      session,
+      chart: () => chartRef.current,
+      state: () => ({
+        positions: session.snapshot().positions.map((p) => ({
+          id: p.id, side: p.side, lots: p.lots,
+          entryPrice: p.entryPrice, sl: p.sl, tp: p.tp, commission: p.commission,
+        })),
+        pendingOrders: session.snapshot().pendingOrders.length,
+      }),
+      setLevel: (id: number, kind: "sl" | "tp", price: number) =>
+        session.setLevel(id, kind, price),
+      setBreakEven: (r: number) => session.setBreakEvenTrigger(r),
+      priceToY: (price: number) => {
+        const c = chartRef.current;
+        const s = candleRef.current;
+        if (!c || !s) return null;
+        return s.priceToCoordinate(price);
+      },
+    };
+  }, [session]);
+
+  /**
+   * Repaint whenever the account changes: a fill, a close, a moved stop.
+   *
+   * Without this the position lines would only refresh on a chart interaction, so a
+   * trailing stop would appear frozen at its old price while the engine had moved it.
+   */
   const repaint = useCallback(() => {
     const o = overlayRef.current;
     if (!o || view.length === 0) return;
@@ -407,13 +447,48 @@ export function App(): JSX.Element {
     o.queue(
       drawingsRef.current.get(), interRef.current, rightEdge,
       hoverId, null,
+      // live account levels: rebuilt every frame from the engine, never persisted
+      session.snapshot().positions.flatMap(positionLines),
     );
     setDrawCount(drawingsRef.current.get().length);
-  }, [view, hoverId]);
+  }, [view, hoverId, session]);
+
+  useEffect(() => {
+    // Must re-QUEUE, not just invalidate: invalidate() repaints the LAST QUEUED shapes,
+    // which know nothing about a position that just opened. That is exactly why the
+    // SL/TP lines were invisible after a fill until the next chart interaction.
+    const off = session.subscribe(() => repaint());
+    return off;
+  }, [session, repaint]);
+
+  /** Handle being dragged: which position and which leg. */
+  const dragHandle = useRef<{ positionId: number; kind: "sl" | "tp" } | null>(null);
+
+  /**
+   * Grab a position handle if the pointer is on one.
+   *
+   * Checked before the drawing interaction so an SL line sitting on top of a trendline
+   * does not steal the drag. Returns true when the event was consumed.
+   */
+  const tryGrabHandle = useCallback((e: React.PointerEvent): boolean => {
+    const c = pointerCtx(e);
+    if (!c) return false;
+    const positions = session.snapshot().positions;
+    if (positions.length === 0) return false;
+
+    const lines = positions.flatMap(positionLines);
+    const hit = hitHandle(lines, c.point.price, c.tolerance * 2);
+    if (!hit) return false;
+
+    dragHandle.current = { positionId: hit.positionId, kind: hit.kind as "sl" | "tp" };
+    e.preventDefault();
+    return true;
+  }, [pointerCtx, session]);
 
   const onCanvasDown = useCallback((e: React.PointerEvent) => {
     const chart = chartRef.current;
     if (!chart) return;
+    if (tryGrabHandle(e)) return;
     if (tool === null) {
       // select mode: let the chart pan unless we grabbed a drawing
       const c = pointerCtx(e);
@@ -428,11 +503,23 @@ export function App(): JSX.Element {
     interRef.current = r.state;
     if (r.committed) applyDrawings(r.drawings, true);
     else repaint();
-  }, [tool, pointerCtx, repaint, applyDrawings]);
+  }, [tool, pointerCtx, repaint, applyDrawings, tryGrabHandle]);
+
+  /** Reason a dragged level was refused, shown in the status line. */
+  const [dragMessage, setDragMessage] = useState("");
 
   const onCanvasMove = useCallback((e: React.PointerEvent) => {
     const c = pointerCtx(e);
     if (!c) return;
+
+    // a position handle is being dragged: constrain, apply, repaint
+    if (dragHandle.current) {
+      const { positionId, kind } = dragHandle.current;
+      const r = session.setLevel(positionId, kind, c.point.price);
+      if (!r.ok && r.message) setDragMessage(r.message);
+      else setDragMessage("");
+      return;
+    }
 
     if (interRef.current.pressed || interRef.current.tool) {
       const r = onPointerMove(interRef.current, drawingsRef.current.get(), c);
@@ -456,6 +543,12 @@ export function App(): JSX.Element {
   }, [pointerCtx, repaint, hoverId]);
 
   const onCanvasUp = useCallback((e: React.PointerEvent) => {
+    // releasing a dragged position handle takes priority over the drawing machine
+    if (dragHandle.current) {
+      dragHandle.current = null;
+      setDragMessage("");
+      return;
+    }
     const c = pointerCtx(e);
     if (!c) return;
     const r = onPointerUp(interRef.current, drawingsRef.current.get(), c);
@@ -778,6 +871,7 @@ export function App(): JSX.Element {
 
         {rail === "journal" && <JournalPanel session={session} />}
 
+        {dragMessage && <p className="status status-warn">{dragMessage}</p>}
         {status && <p className="status">{status}</p>}
 
         <footer className="credit">Charting by Lightweight Charts (Apache-2.0)</footer>

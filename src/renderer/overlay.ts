@@ -14,6 +14,7 @@ import type { IChartApi, ISeriesApi, Time } from "lightweight-charts";
 import type { Drawing, Point } from "../core/drawings.js";
 import type { RenderShape } from "../core/drawing-interaction.js";
 import { renderDrawing, renderPreview, type InteractionState } from "../core/drawing-interaction.js";
+import type { PriceLine } from "../core/position-manage.js";
 
 export interface OverlayTheme {
   background: string;
@@ -171,6 +172,9 @@ export class DrawingOverlay {
       this.paintShape(shapes.preview, false, false);
       ctx.restore();
     }
+
+    // last, so the account's levels sit above the annotations
+    this.paintPositions();
   }
 
   /**
@@ -185,6 +189,15 @@ export class DrawingOverlay {
   } | null = null;
 
   /**
+   * Live position lines (entry/SL/TP), painted on top of the drawings.
+   *
+   * Kept separate from Drawing[] on purpose: those are user annotations that persist
+   * per workspace, whereas these mirror account state and disappear when the position
+   * closes. Storing them as Drawings would persist them to SQLite by accident.
+   */
+  private positionLevels: PriceLine[] = [];
+
+  /**
    * Queue drawings for painting.
    *
    * `rightEdge` is the time of the last visible bar, so rays/channels extend to
@@ -196,14 +209,68 @@ export class DrawingOverlay {
     rightEdge: number,
     hoveredId: string | null,
     selectedId: string | null,
+    positionLevels: readonly PriceLine[] = [],
   ): void {
     this.hoveredId = hoveredId;
     this.selectedId = selectedId;
+    this.positionLevels = [...positionLevels];
     this.pendingShapes = {
       drawings: drawings.map((d) => renderDrawing(d, rightEdge)),
       preview: renderPreview(state, { color: this.theme.accent, width: 2 }, rightEdge),
     };
     this.invalidate();
+  }
+
+  /**
+   * Paint the position lines: a dashed entry, a red stop, a green target, each with a
+   * right-edge price tag. Dashed so they never read as a user drawing.
+   */
+  private paintPositions(): void {
+    const ctx = this.ctx;
+    if (!ctx || this.positionLevels.length === 0) return;
+    const rect = this.canvas.getBoundingClientRect();
+
+    for (const l of this.positionLevels) {
+      const y = this.series.priceToCoordinate(l.price);
+      if (y === null) continue;
+      const colour = l.kind === "sl" ? this.theme.down
+        : l.kind === "tp" ? this.theme.up
+        : this.theme.accent;
+
+      ctx.save();
+      ctx.strokeStyle = colour;
+      ctx.lineWidth = l.kind === "entry" ? 1 : 2;
+      ctx.setLineDash(l.kind === "entry" ? [2, 4] : [6, 4]);
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(rect.width, y);
+      ctx.stroke();
+      ctx.restore();
+
+      // handle at the right edge, so the user can see it is grabbable
+      if (l.draggable) {
+        ctx.save();
+        ctx.fillStyle = colour;
+        ctx.beginPath();
+        ctx.arc(rect.width - 10, y, 4, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+
+      // price tag on the right, over the axis gutter
+      ctx.save();
+      ctx.font = "10px ui-monospace, Menlo, monospace";
+      ctx.textBaseline = "middle";
+      const text = l.label;
+      const w = ctx.measureText(text).width + 8;
+      ctx.fillStyle = colour;
+      ctx.globalAlpha = 0.92;
+      ctx.fillRect(rect.width - w, y - 8, w, 16);
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = "#0d1117";
+      ctx.fillText(text, rect.width - w + 4, y);
+      ctx.restore();
+    }
   }
 
   private paintShape(shape: RenderShape, hovered: boolean, selected: boolean): void {

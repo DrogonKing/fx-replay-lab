@@ -34,6 +34,7 @@ export function TradePanel({
   const [triggerPrice, setTriggerPrice] = useState("");
   const [limitPrice, setLimitPrice] = useState("");
   const [oco, setOco] = useState(false);
+  const [beR, setBeR] = useState("0");
 
   useEffect(() => session.subscribe(setSnap), [session]);
 
@@ -208,6 +209,21 @@ export function TradePanel({
         </b>
       </div>
 
+      <label className="be-row">
+        auto break-even at
+        <input
+          value={beR}
+          onChange={(e) => {
+            setBeR(e.target.value);
+            const n = Number(e.target.value);
+            session.setBreakEvenTrigger(Number.isFinite(n) ? n : 0);
+          }}
+          inputMode="decimal"
+          placeholder="0"
+        />
+        R <span className="hint">(stop moves to entry; 0 = off)</span>
+      </label>
+
       <div className="row">
         <button
           className="buy-btn"
@@ -276,9 +292,10 @@ export function TradePanel({
             </thead>
             <tbody>
               {snap.positions.map((p) => {
-                const exit = p.side === "buy" ? price : price;
-                const delta = p.side === "buy" ? exit - p.entryPrice : p.entryPrice - exit;
-                const pnl = delta * p.lots * contractSize;
+                // Use the engine's own valuation. Recomputing here produced a row that
+                // disagreed with the account by exactly the commission, and a no-op
+                // ternary lost the bid/ask distinction for shorts.
+                const pnl = session.positionPnl(p, price);
                 return (
                   <tr key={p.id}>
                     <td className={p.side === "buy" ? "up" : "down"}>{p.side}</td>
@@ -299,6 +316,10 @@ export function TradePanel({
               })}
             </tbody>
           </table>
+          <p className="msg">
+            Drag the SL / TP lines on the chart to move them. A stop cannot cross the
+            entry — the drag is refused and the reason appears under the chart.
+          </p>
           <button onClick={() => { const n = session.closeAll(); onFiled?.(n); }}>
             Close all
           </button>

@@ -19,6 +19,7 @@ bash scripts/persist-smoke.sh         # drawings survive kill -9 + relaunch
 bash scripts/journal-smoke.sh         # journal survives kill -9 + relaunch
 bash scripts/trade-smoke.sh           # trade -> SL -> journal entry, end to end
 bash scripts/orders-smoke.sh          # limit fills, invalid side refused, OCO pair
+bash scripts/position-smoke.sh        # level lines, real SL drag, break-even
 bash scripts/screenshot.sh /tmp/a.png # capture the UI
 ```
 
@@ -90,13 +91,17 @@ BAD PINE: "unsupported ta.notReal() (bar 0)"  ← precise, not silent
 - [x] Order types: limit, stop, stop-limit, OCO brackets — with gap handling,
       side validation, per-order cancel and cancel-all
 - [x] Stop-limit arms at the trigger price (not the bar open), stays armed on a gap
-- [ ] Break-even automation (move SL to entry at +1R)
+- [x] Break-even automation (move SL to entry at +1R, configurable, commission-aware)
 - [ ] Swap accrual, slippage, margin call threshold
 - [x] Positions table UI with per-row close and close-all
 - [x] Margin check: an order that cannot be funded is refused with the numbers
 - [x] Trading halts on stop-out and the panel says so
 - [x] Closed trades filed to the journal automatically, tagged with the exit reason
-- [ ] SL/TP drag on chart
+- [x] SL/TP drawn as dashed level lines with right-edge price tags
+- [x] SL/TP draggable on the chart, constrained so a stop cannot cross the entry
+- [x] Entry line shown but NOT draggable (it is history)
+- [x] Auto break-even at N×R, commission-aware, only ever tightens
+- [x] Positions table reads P/L from the engine (one source of truth)
 - [ ] Equity curve UI
 - [ ] Risk calculator UI
 

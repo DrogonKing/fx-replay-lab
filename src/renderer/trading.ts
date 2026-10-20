@@ -19,6 +19,7 @@ import {
   processBar, validateOrder, describeOrder,
   type PendingOrder, type PendingKind, type Bar,
 } from "../core/orders.js";
+import { constrainLevel, applyBreakEven } from "../core/position-manage.js";
 
 export interface SessionSnapshot {
   balance: number;
@@ -74,11 +75,23 @@ export class TradingSession {
   private orders: PendingOrder[] = [];
   private orderHistory: PendingOrder[] = [];
   private orderSeq = 0;
+  /** R multiple at which every stop moves to break-even; 0 = off */
+  private breakEvenR = 0;
 
   constructor(symbolId: string, account: Account = DEFAULT_ACCOUNT) {
     this.symbolId = symbolId;
     this.spec = findSymbol(symbolId);
     this.engine = new AccountEngine({ account, symbol: this.spec });
+  }
+
+  /**
+   * Floating P/L of one position, from the engine.
+   *
+   * Exposed so the UI never recomputes money: a second implementation drifts, and the
+   * row a trader reads would disagree with the account total.
+   */
+  positionPnl(p: Position, bid: number): number {
+    return this.engine.positionPnl(p, bid);
   }
 
   /** Called whenever the displayed price changes, so equity stays live. */
@@ -171,6 +184,60 @@ export class TradingSession {
     if (tags.length > 0) this.positionTags.set(pos.id, tags);
     this.emit();
     return { ok: true };
+  }
+
+  /**
+   * Move a position's stop or target.
+   *
+   * Constrained in core: a stop may not cross the entry, so a drag cannot turn a
+   * trade into a guaranteed instant loss.
+   */
+  setLevel(
+    positionId: number,
+    kind: "sl" | "tp",
+    price: number,
+  ): { ok: boolean; message?: string } {
+    const pos = this.engine.positions.find((p) => p.id === positionId);
+    if (!pos) return { ok: false, message: "position not found" };
+
+    const res = constrainLevel(pos, kind, price, this.spec.pipSize / 2);
+    if (res.price === null) return { ok: false, message: res.reason };
+
+    if (kind === "sl") pos.sl = res.price;
+    else pos.tp = res.price;
+    this.emit();
+    return { ok: true };
+  }
+
+  /**
+   * Move every stop to break-even once it is `triggerR` in profit.
+   *
+   * Called from onBar. The commission is passed through because "break even" must
+   * recover the entry cost too: stopping at the raw entry leaves the trade slightly
+   * negative.
+   */
+  private autoBreakEven(): void {
+    if (this.breakEvenR <= 0) return;
+    for (const p of this.engine.positions) {
+      const next = applyBreakEven(
+        p, this.price, this.breakEvenR,
+        p.commission, p.lots, this.spec.contractSize,
+      );
+      if (next === null) continue;
+      // applyBreakEven only ever tightens, but guard anyway: a stop must never move
+      // backwards on a trade that is already working
+      if (p.sl !== null) {
+        const isBuy = p.side === "buy";
+        if (isBuy && next <= p.sl) continue;
+        if (!isBuy && next >= p.sl) continue;
+      }
+      p.sl = next;
+    }
+  }
+
+  /** 0 disables automatic break-even. */
+  setBreakEvenTrigger(r: number): void {
+    this.breakEvenR = Math.max(0, r);
   }
 
   closeAll(): number {
@@ -310,6 +377,10 @@ export class TradingSession {
     // stop must be testable on the same bar rather than a bar later — otherwise
     // every entry gets a free bar of protection it did not have.
     this.processOrders(bar as Bar);
+
+    // Break-even runs BEFORE the SL/TP pass: if price has reached the trigger on this
+    // bar, the stop should already be at break-even when that same bar is tested.
+    this.autoBreakEven();
 
     const closed = this.engine.onBar(bar);
     if (closed.length > 0) this.fileTrades(closed);

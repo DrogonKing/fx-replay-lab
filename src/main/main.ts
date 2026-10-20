@@ -59,16 +59,26 @@ function createWindow(): BrowserWindow {
     return { action: "deny" };
   });
 
+  // `--fx-test` (an explicit CLI switch, never a default) adds ?test=1 so the smoke
+  // scripts can drive the engine directly. loadFile() takes a `query` object; putting
+  // the query in the path does not work, which is why the first version of the hook
+  // silently never installed.
+  const testQuery = process.argv.includes("--fx-test")
+    ? { test: "1" }
+    : undefined;
+  const indexPath = path.join(__dirname, "../renderer/index.html");
+
   if (isDev) {
     const devUrl = process.env.VITE_DEV_SERVER_URL;
     if (devUrl) {
-      void win.loadURL(devUrl);
+      const url = testQuery ? `${devUrl}?test=1` : devUrl;
+      void win.loadURL(url);
       win.webContents.openDevTools({ mode: "detach" });
     } else {
-      void win.loadFile(path.join(__dirname, "../renderer/index.html"));
+      void win.loadFile(indexPath, testQuery ? { query: testQuery } : undefined);
     }
   } else {
-    void win.loadFile(path.join(__dirname, "../renderer/index.html"));
+    void win.loadFile(indexPath, testQuery ? { query: testQuery } : undefined);
   }
   return win;
 }

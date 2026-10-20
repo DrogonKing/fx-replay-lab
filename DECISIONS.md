@@ -464,3 +464,56 @@ refusal above market with the exact message, steps 60 bars until the fill
 
 **Not done, and stated in the docs:** no partial fills, no order expiry (day/GTC), no
 variable spread. Real books fill across levels; this fills whole or not at all.
+
+
+---
+
+## ADR-013: Position levels are painted state, not drawings; constraints live in core
+
+**Decision.** Entry/SL/TP lines are queued separately from `Drawing[]` on the overlay and
+their rules live in `src/core/position-manage.ts` as pure functions.
+
+**Why not reuse Drawing.** A drawing persists per workspace in SQLite and is the user's
+annotation. A position level mirrors account state and must disappear when the position
+closes. Modelling them as drawings would persist them, restore them next launch, and
+leave a stop line on the chart for a position that no longer exists. `queue()` therefore
+takes a separate `positionLevels` argument painted after the drawings, so an SL is never
+buried under a trendline.
+
+**Constraints in core, not in the drag handler.** A stop crossing the entry is not a UI
+problem, it is a money problem: a buy with its stop above the entry is a guaranteed
+instant loss, and a sell with its target above the entry is a guaranteed instant win.
+Keeping the rule in core means it holds no matter who moves the level — the pointer
+handler, a keyboard nudge, or a future trailing-stop feature.
+
+**Break-even includes commission.** Stopping at the raw entry leaves the trade slightly
+negative once the spread and commission are paid, which is not what a trader means by
+break-even. The zero-P/L price is `entry ± commission / (lots × contractSize)`.
+
+**Break-even runs before the stop check on the same bar**, so a bar that reaches the
+trigger and then reverses finds the stop already moved.
+
+**Two bugs found by running it rather than by tests:**
+
+1. **The level lines were invisible after a fill.** The session subscription called
+   `overlay.invalidate()`, and `invalidate()` repaints the *last queued* shapes — which
+   knew nothing about a position that had just opened. It looked fine after any chart
+   interaction (which re-queues) and wrong otherwise. The fix is to re-queue from the
+   subscription, not just invalidate: `invalidate()` is a repaint, not a state update.
+2. **The test hook never installed.** `loadFile()` ignores a query string placed in the
+   path, so `?test=1` never reached the page and three assertions downstream failed with
+   confusing `undefined` errors. `loadFile(path, { query })` is the supported way, and the
+   launch flag is an explicit `--fx-test` (never a default).
+
+**A third bug the screenshot caught that no test would have:** the open-positions table
+recomputed P/L itself — omitting commission (row `+18.70`, account `+18.40`) and losing
+the bid/ask distinction via a no-op `side === "buy" ? price : price`. It now reads
+`engine.positionPnl()`. Two implementations of money arithmetic always drift, and the one
+the trader reads is the wrong one to drift.
+
+**Evidence.** `scripts/position-smoke.sh` in the real app: lines painted
+(`stopLinePixels: 3328`, `targetLinePixels: 3298`), a genuine pointer drag moved the stop
+`1971.91 → 1966.91`, a drag toward the entry was refused with
+`"a buy's stop must stay below the entry (1991.91)"` and the stop unchanged, and
+auto break-even at 0.2R moved the stop to `1991.94` (= entry + 0.03 commission) while the
+position stayed open.

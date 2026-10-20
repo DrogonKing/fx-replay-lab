@@ -104,6 +104,40 @@
   line-height: 1.4;
 }
 
+.be-row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10px;
+  color: #787b86;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin: 6px 0;
+}
+
+.be-row input {
+  width: 44px;
+  background: #1e222d;
+  border: 1px solid #363a45;
+  border-radius: 4px;
+  color: #d1d4dc;
+  font: inherit;
+  font-size: 12px;
+  padding: 3px 5px;
+}
+
+.be-row .hint {
+  text-transform: none;
+  letter-spacing: 0;
+  color: #5d606b;
+}
+
+.status-warn {
+  color: #f0b90b !important;
+  border-left: 2px solid #f0b90b;
+  padding-left: 6px;
+}
+
 .row-del {
   background: transparent;
   border: none;

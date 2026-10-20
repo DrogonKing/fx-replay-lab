@@ -142,6 +142,34 @@ the required and available numbers rather than silently opening.
 backtester: SL before TP within a bar, gap-through fills at the open. If these never
 fire, trading halts — equity has reached zero.
 
+### Moving your stop and target
+
+Your open position draws three dashed lines on the chart: **entry** (gold, not
+draggable), **SL** (red) and **TP** (green). Drag the SL or TP line to move it.
+
+The rules are enforced, not advisory:
+
+| Position | Stop must stay | Target must stay |
+|---|---|---|
+| buy | below the entry | above the entry |
+| sell | above the entry | below the entry |
+
+A drag that breaks the rule snaps back and tells you why, in gold, under the chart:
+
+```
+a buy's stop must stay below the entry (1991.91)
+```
+
+### Auto break-even
+
+Set **auto break-even at** `N` R. Once a position is `N` times its initial risk in
+profit, the stop moves to break-even — **including commission**, so on a buy the stop
+goes to `entry + commission/(lots × contract)`, not the raw entry. Stopping at the raw
+entry would close the trade slightly negative, which is not break-even.
+
+It only ever tightens: if your stop is already at or better than break-even, nothing
+moves. Leave it at `0` to turn it off.
+
 ### Closed trades go to the journal automatically
 
 Every close — manual, stop, target, stop-out — creates a journal entry carrying:
