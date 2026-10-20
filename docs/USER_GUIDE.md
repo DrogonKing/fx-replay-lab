@@ -162,8 +162,35 @@ macOS    ~/Library/Application Support/fx-replay-lab/fx-replay-lab/
 Linux    ~/.config/fx-replay-lab/fx-replay-lab/
 ```
 
-`fx-replay-lab.db` is SQLite (accounts, trades, journal, settings). Back it up by
-copying that folder.
+`fx-replay-lab.db` is SQLite. Back it up by copying that folder (plus the `-wal`
+file if the app is running).
+
+### What is saved, and when
+
+| Data | Saved | Keyed by |
+|---|---|---|
+| Drawings | 0.6 s after you stop moving | `symbol::timeframe` |
+| Journal entries | 0.4 s after a change | entry id |
+| Settings | immediately | key |
+
+**Drawings belong to a symbol AND a timeframe.** A trend line drawn on the M5 chart
+will not appear on D1 — the same two timestamps mean a different price level there.
+Switch back to M5 and it returns.
+
+That also means the drawing count changes when you switch timeframe. That is
+intentional, not a bug.
+
+If a stored drawing is ever corrupt (an interrupted write, a hand-edited file, data
+from an older version), it is dropped and the status line reports how many. The rest
+of your work still loads. On save, anything the reader would reject is refused
+before it reaches the file.
+
+### Journal: sample rows are labelled
+
+The **+ Sample** button adds a row tagged `demo` so you can see how the analytics
+behave. Those rows are included in the statistics. **Clear samples** removes them.
+A real journal with fake rows in it is worse than no journal, so the panel warns
+while any `demo` row is present.
 
 ## Keyboard
 

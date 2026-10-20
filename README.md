@@ -23,7 +23,7 @@ so "no network" is structural rather than a flag someone can forget.
 ## Verified state
 
 ```
-276 unit tests, 14 files ..................... pass
+373 unit tests, 17 files ..................... pass
 strict typecheck (noUncheckedIndexedAccess) ... clean
 offline verification ......................... PASS
 CI config validation ......................... PASS
@@ -62,7 +62,11 @@ Those backtest numbers are a **negative result for a plain EMA(9/21) crossover o
   and money-at-risk, 10 annotation types, measure. Canvas overlay, undo/redo, drag to
   move, verified by real pointer events. See `docs/DRAWING-TOOLS.md`.
 - **Journal**: entries with tags, R multiples, per-tag and per-month analytics, CSV
-  export.
+  export, row delete.
+- **Persistence**: drawings and journal are stored in SQLite and restored on launch.
+  Drawings are keyed by `symbol::timeframe`, autosaved on a debounce, and validated at
+  a single boundary — proven by drawing, inspecting the file, `kill -9`, relaunching
+  and asserting the shapes paint again (`scripts/persist-smoke.sh`).
 - **Packaging**: electron-builder for Windows (nsis + portable zip), macOS (dmg),
   Linux (AppImage + deb). GitHub Actions runs verify → package matrix → release.
 
@@ -70,8 +74,8 @@ Those backtest numbers are a **negative result for a plain EMA(9/21) crossover o
 
 Stated plainly, because a checklist that hides gaps is worse than no checklist:
 
-- Drawings do **not** persist to SQLite yet (session-only); journal entries likewise.
 - Order types beyond market (limit/stop/OCO), swap accrual, margin-call threshold.
+- Journal entries are **manual**: closed positions are not captured automatically.
 - News calendar, session shading.
 - Pine: no `request.security`, no `label`/`line`/`box`, no tuple destructuring, no
   `import`.
@@ -98,6 +102,9 @@ node scripts/verify-workflow.mjs   # validate CI + packaging config
 bash scripts/headless-smoke.sh     # boot under Xvfb and assert the DOM
 bash scripts/live-smoke.sh         # real network + real backtest via the UI
 bash scripts/pine-smoke.sh         # Pine through IPC
+bash scripts/draw-smoke.sh         # real pointer events paint; undo repaints
+bash scripts/persist-smoke.sh      # drawings survive kill -9 + relaunch
+bash scripts/journal-smoke.sh      # journal survives kill -9 + relaunch
 ```
 
 ## Docs
