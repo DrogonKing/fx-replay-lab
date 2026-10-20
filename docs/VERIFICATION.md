@@ -145,7 +145,36 @@ STRATEGY HOST: {"ok":true}
 `app.asar.unpacked` with an ABI matching Electron. Listing accounts proves the
 module loaded inside the bundle, which a build log cannot.
 
-## 9. CI config validated locally
+## 9. Manual trading -> automatic journal capture
+
+The renderer had no trading UI at all before this: the account engine existed and the
+backtester drove it, but a user could not place an order. `scripts/trade-smoke.sh`
+exercises the whole chain with real clicks:
+
+```
+PANEL:   bid 1991.71, balance 10000.00, equity 10000.00, 4 order inputs
+OPEN:    "buy 0.1 opened", 1 open position
+STEP:    40 bars stepped, balance 9989.70  (stop fired)
+JOURNAL: trades1, net P/L -10, win rate 0.0%
+         rows: XAUUSD buy -10 -1.03
+         by tag: sl 1 -10, auto-test 1 -10
+SQLITE:  XAUUSD buy lots=0.1 pnl=-10.30 risk=10.00 tags=['sl','auto-test']
+```
+
+Reading that: a buy was placed with a 1-point stop (risk $10 on 0.10 lots of gold),
+the replay advanced, the stop was hit, and the journal received the trade
+automatically with `sl` as the reason and `auto-test` as the user's tag. The R of
+−1.03 is real: $10.30 lost against $10.00 risked, the extra 0.30 being commission.
+
+**A bug this test caught that unit tests could not.** The trade existed in the
+session (`"sections":["Trade","Closed (1)"]`) but the journal showed zero rows and
+the database had zero rows. The journal drained the session's pending buffer on
+mount, then SQLite hydration resolved and *replaced* state with the stored rows,
+discarding the drained entry — and since the buffer was already empty, the entry was
+destroyed rather than delayed. Hydration now merges into current state. A
+load-then-mutate flow must never `set(existing)`; it must `set(prev => merge(...))`.
+
+## 10. CI config validated locally
 
 ```
 $ node scripts/verify-workflow.mjs
