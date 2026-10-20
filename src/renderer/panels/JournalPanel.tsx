@@ -12,6 +12,7 @@ import {
   parseJournal, serialiseJournal,
 } from "../../core/persist.js";
 import { mergeNewEntries } from "../../core/trade-to-journal.js";
+import { useI18n } from "../i18n-context.js";
 
 export interface JournalEntry {
   id: string;
@@ -134,6 +135,7 @@ interface Props {
 }
 
 export function JournalPanel({ session }: Props = {}): JSX.Element {
+  const { t } = useI18n();
   const [entries, setEntries] = useState<JournalEntry[]>([]);
   const [tagInput, setTagInput] = useState("");
   const [note, setNote] = useState("");
@@ -260,36 +262,43 @@ export function JournalPanel({ session }: Props = {}): JSX.Element {
 
   return (
     <div className="journal-panel">
-      <h3>Journal</h3>
+      <h3>{t("journal.title")}</h3>
       <div className="row">
         <input
-          placeholder="tags, comma-separated"
+          placeholder={t("trade.tags")}
           value={tagInput}
           onChange={(e) => setTagInput(e.target.value)}
         />
-        <button onClick={addSample} title="Adds a labelled sample row">+ Sample</button>
+        <button onClick={addSample} title={t("journal.sample")}>{t("journal.sample")}</button>
       </div>
 
-      {stats.count === 0 && <p className="msg">No trades recorded yet.</p>}
+      {stats.count === 0 && <p className="msg">{t("journal.empty")}</p>}
 
       {stats.count > 0 && (
         <>
-          <div className="kv"><span>trades</span><b>{stats.count}</b></div>
-          <div className="kv"><span>net P/L</span>
+          <div className="kv"><span>{t("journal.trades")}</span><b>{stats.count}</b></div>
+          <div className="kv"><span>{t("journal.netPnl")}</span>
             <b className={stats.netPnl >= 0 ? "up" : "down"}>{stats.netPnl.toFixed(0)}</b>
           </div>
-          <div className="kv"><span>win rate</span><b>{stats.winRate.toFixed(1)}%</b></div>
-          <div className="kv"><span>expectancy</span><b>{stats.expectancy.toFixed(2)}</b></div>
-          <div className="kv"><span>avg R</span><b>{stats.avgR.toFixed(2)}</b></div>
-          <div className="kv"><span>best / worst R</span>
+          <div className="kv"><span>{t("journal.winRate")}</span><b>{stats.winRate.toFixed(1)}%</b></div>
+          <div className="kv"><span>{t("journal.expectancy")}</span><b>{stats.expectancy.toFixed(2)}</b></div>
+          <div className="kv"><span>{t("journal.avgR")}</span><b>{stats.avgR.toFixed(2)}</b></div>
+          <div className="kv"><span>{t("journal.bestWorstR")}</span>
             <b>{stats.bestR.toFixed(1)} / {stats.worstR.toFixed(1)}</b>
           </div>
 
           {stats.byTag.length > 0 && (
             <>
-              <h3>By tag</h3>
+              <h3>{t("journal.byTag")}</h3>
               <table className="grid">
-                <thead><tr><th>tag</th><th>n</th><th>net</th><th>win%</th></tr></thead>
+                <thead>
+                  <tr>
+                    <th>{t("journal.tag")}</th>
+                    <th>{t("journal.n")}</th>
+                    <th>{t("journal.net")}</th>
+                    <th>{t("journal.winPct")}</th>
+                  </tr>
+                </thead>
                 <tbody>
                   {stats.byTag.map((t) => (
                     <tr key={t.tag}>
@@ -303,9 +312,15 @@ export function JournalPanel({ session }: Props = {}): JSX.Element {
             </>
           )}
 
-          <h3>By month</h3>
+          <h3>{t("journal.byMonth")}</h3>
           <table className="grid">
-            <thead><tr><th>month</th><th>n</th><th>net</th></tr></thead>
+            <thead>
+              <tr>
+                <th>{t("journal.month")}</th>
+                <th>{t("journal.n")}</th>
+                <th>{t("journal.net")}</th>
+              </tr>
+            </thead>
             <tbody>
               {stats.byMonth.map((m) => (
                 <tr key={m.month}>
@@ -317,12 +332,12 @@ export function JournalPanel({ session }: Props = {}): JSX.Element {
           </table>
 
           <div className="row">
-            <button onClick={download}>⬇ Export CSV</button>
+            <button onClick={download}>{t("journal.export")}</button>
             <button
               onClick={() => setEntries((l) => l.filter((e) => !e.tags.includes("demo")))}
               title="Remove the labelled sample rows"
             >
-              ✕ Clear samples
+              {t("journal.clearSamples")}
             </button>
           </div>
 
@@ -335,9 +350,17 @@ export function JournalPanel({ session }: Props = {}): JSX.Element {
 
           {entries.length > 0 && (
             <>
-              <h3>Rows</h3>
+              <h3>{t("journal.rows")}</h3>
               <table className="grid">
-                <thead><tr><th>symbol</th><th>side</th><th>P/L</th><th>R</th><th /></tr></thead>
+                <thead>
+                  <tr>
+                    <th>{t("journal.symbol")}</th>
+                    <th>{t("trade.side")}</th>
+                    <th>{t("trade.pnl")}</th>
+                    <th>{t("journal.rMultiple")}</th>
+                    <th />
+                  </tr>
+                </thead>
                 <tbody>
                   {entries.slice(-20).reverse().map((e) => (
                     <tr key={e.id}>

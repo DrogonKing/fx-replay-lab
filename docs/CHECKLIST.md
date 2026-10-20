@@ -22,6 +22,7 @@ bash scripts/orders-smoke.sh          # limit fills, invalid side refused, OCO p
 bash scripts/position-smoke.sh        # level lines, real SL drag, break-even
 bash scripts/trailing-smoke.sh        # trail tightens, never closes early, partial close
 bash scripts/news-smoke.sh            # CSV import, persist, blackout refuses an order
+bash scripts/i18n-smoke.sh            # Persian switch, RTL mirror, Latin digits, reload
 bash scripts/screenshot.sh /tmp/a.png # capture the UI
 ```
 
@@ -182,7 +183,11 @@ BAD PINE: "unsupported ta.notReal() (bar 0)"  ← precise, not silent
 - [x] `docs/USER_GUIDE.md` with known limitations
 - [x] `docs/PINE-COMPATIBILITY.md`
 - [x] `PLAN.md`, `DECISIONS.md`
-- [ ] i18n Persian RTL + English
+- [x] i18n English + Persian, `dir` on `<html>` as the only direction switch, choice
+      persisted; catalogue completeness and placeholder parity enforced by tests
+- [~] Persian UI text: toolbar, tabs, trade, news and journal panels translated
+- [ ] Persian for core validation messages (they are English strings from `src/core/`,
+      surfaced verbatim; error codes are the right fix and are not done)
 - [ ] 5M-bar profiling in the real UI
 - [ ] Accessibility pass
 - [ ] Windows/macOS installers actually run (built by CI, not tested here)

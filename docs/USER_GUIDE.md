@@ -198,6 +198,21 @@ closes more than you asked, rounding down leaves a position you think is gone.
 the lots. A 60-point stop on 0.5 lots of gold risks $3,000, so a $42 profit is 0.014R.
 That is an honest reading of an oversized position.
 
+### Language
+
+**Language / زبان** in the toolbar switches between English and Persian. The choice is
+remembered. Persian flips the whole interface to right-to-left: the panel moves to the
+left, the drawing rail to the right.
+
+**The chart is never mirrored.** Time still runs left-to-right and the price scale stays on
+the right — a reversed chart would be a bug.
+
+**Numbers stay in Latin digits** in both languages (`1991.71`, not `۱۹۹۱.۷۱`), so prices can
+be copied into a broker statement or a spreadsheet and still work.
+
+Known gap: validation messages produced by the engine (for example "buy limit 2050 is above
+the market") are still English inside the Persian interface.
+
 ### Economic calendar
 
 **NEWS** tab → **Import CSV…**. Any export with a date, a currency, an impact and an event

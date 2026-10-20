@@ -11,6 +11,8 @@ import {
   type CalendarEvent, type ParseIssue,
 } from "../../core/news.js";
 import type { Impact } from "../../core/types.js";
+import { useI18n } from "../i18n-context.js";
+import { fmtDate } from "../../core/i18n.js";
 
 interface Props {
   /** currency of the instrument being traded, e.g. "USD" */
@@ -28,6 +30,7 @@ const impactClass = (i: Impact): string =>
 export function NewsPanel({
   currency, now, onEvents, onBlackout,
 }: Props): JSX.Element {
+  const { t } = useI18n();
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [issues, setIssues] = useState<ParseIssue[]>([]);
   const [rowsSeen, setRowsSeen] = useState(0);
@@ -84,8 +87,8 @@ export function NewsPanel({
     if (api?.saveNews) void api.saveNews(deduped);
 
     setMsg(
-      `${deduped.length} events from ${r.rowsSeen} rows` +
-      (r.issues.length > 0 ? ` · ${r.issues.length} rows skipped` : ""),
+      t("news.imported", { events: deduped.length, rows: r.rowsSeen }) +
+      (r.issues.length > 0 ? t("news.skipped", { count: r.issues.length }) : ""),
     );
   }, [dayFirst, blackoutHigh, onEvents]);
 
@@ -97,10 +100,10 @@ export function NewsPanel({
 
   return (
     <div className="news-panel">
-      <h3>Calendar</h3>
+      <h3>{t("news.title")}</h3>
 
       <div className="news-import">
-        <button onClick={() => fileRef.current?.click()}>Import CSV…</button>
+        <button onClick={() => fileRef.current?.click()}>{t("news.import")}</button>
         <input
           ref={fileRef}
           type="file"
@@ -118,30 +121,28 @@ export function NewsPanel({
             checked={dayFirst}
             onChange={(e) => setDayFirst(e.target.checked)}
           />
-          day-first dates
-        </label>
+          {t("news.dayFirst")}
+          </label>
       </div>
 
       <label className="be-row">
-        pause ±
+        {t("news.pausePlusMinus")}
         <input
           value={blackoutHigh}
           onChange={(e) => setBlackoutHigh(e.target.value)}
           inputMode="numeric"
         />
-        min on high impact
+        {t("news.onHighImpact")}
       </label>
 
       {msg && <p className="msg">{msg}</p>}
 
       {issues.length > 0 && (
         <details className="news-issues">
-          <summary>{issues.length} rows skipped</summary>
+          <summary>{t("news.rowsSkipped", { count: issues.length })}</summary>
           <ul>
             {issues.slice(0, 8).map((i, n) => (
-              <li key={n}>
-                line {i.line}: {i.reason}
-              </li>
+              <li key={n}>{t("news.line", { line: i.line, reason: i.reason })}</li>
             ))}
           </ul>
         </details>
@@ -149,48 +150,47 @@ export function NewsPanel({
 
       {events.length > 0 && (
         <>
-          <div className="kv"><span>events</span><b>{summary.total}</b></div>
+          <div className="kv"><span>{t("news.events")}</span><b>{summary.total}</b></div>
           <div className="kv">
-            <span>high / med / low</span>
+            <span>{t("news.split")}</span>
             <b>{summary.high} / {summary.medium} / {summary.low}</b>
           </div>
 
           <p className={check.blocked ? "blackout-active" : "blackout-clear"}>
             {check.blocked
-              ? `TRADING PAUSED — ${check.reason}`
-              : `Trading open for ${currency}`}
+              ? t("news.paused", { reason: check.reason ?? "" })
+              : t("news.open", { currency })}
           </p>
 
-          <h3>Upcoming</h3>
+          <h3>{t("news.upcoming")}</h3>
           <table className="grid news-table">
             <thead>
-              <tr><th>when</th><th>ccy</th><th>event</th><th>imp</th></tr>
+              <tr>
+                <th>{t("news.when")}</th>
+                <th>{t("news.ccy")}</th>
+                <th>{t("news.event")}</th>
+                <th>{t("news.imp")}</th>
+              </tr>
             </thead>
             <tbody>
               {upcoming.map((e) => (
                 <tr key={e.id} className={check.blocked && check.event?.id === e.id ? "row-blocked" : ""}>
-                  <td>{new Date(e.time * 1000).toISOString().slice(5, 16).replace("T", " ")}</td>
+                  <td>{fmtDate(e.time)}</td>
                   <td>{e.currency}</td>
                   <td className="news-title" title={e.title}>{e.title}</td>
-                  <td className={impactClass(e.impact)}>{e.impact}</td>
+                  <td className={impactClass(e.impact)}>{t(`news.${e.impact}`)}</td>
                 </tr>
               ))}
             </tbody>
           </table>
           {upcoming.length === 0 && (
-            <p className="msg">
-              No events at or after the replay time. Import a calendar covering this period.
-            </p>
+            <p className="msg">{t("news.noneUpcoming")}</p>
           )}
         </>
       )}
 
       {events.length === 0 && (
-        <p className="msg">
-          No calendar loaded. Import a CSV with Date, Time, Currency, Impact and Event
-          columns (most providers export this shape). Until then, trading is never paused
-          for news.
-        </p>
+        <p className="msg">{t("news.empty")}</p>
       )}
     </div>
   );

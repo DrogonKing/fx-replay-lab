@@ -8,6 +8,7 @@
 import React, { useEffect, useState } from "react";
 import type { TradingSession, SessionSnapshot } from "../trading.js";
 import type { Side } from "../../core/types.js";
+import { useI18n } from "../i18n-context.js";
 
 interface Props {
   session: TradingSession;
@@ -26,6 +27,7 @@ interface Props {
 export function TradePanel({
   session, price, contractSize, lotStep, minLot, maxLot, onFiled, blackout,
 }: Props): JSX.Element {
+  const { t } = useI18n();
   const [snap, setSnap] = useState<SessionSnapshot>(() => session.snapshot());
   const [lots, setLots] = useState("0.10");
   const [slPts, setSlPts] = useState("10");
@@ -107,55 +109,51 @@ export function TradePanel({
 
   return (
     <div className="trade-panel">
-      <h3>Trade</h3>
+      <h3>{t("trade.title")}</h3>
 
-      <div className="kv"><span>bid</span><b>{price.toFixed(2)}</b></div>
-      <div className="kv"><span>balance</span><b>{snap.balance.toFixed(2)}</b></div>
+      <div className="kv"><span>{t("trade.bid")}</span><b>{price.toFixed(2)}</b></div>
+      <div className="kv"><span>{t("trade.balance")}</span><b>{snap.balance.toFixed(2)}</b></div>
       <div className="kv">
-        <span>equity</span>
+        <span>{t("trade.equity")}</span>
         <b className={snap.equity >= snap.balance ? "up" : "down"}>
           {snap.equity.toFixed(2)}
         </b>
       </div>
       <div className="kv">
-        <span>floating</span>
+        <span>{t("trade.floating")}</span>
         <b className={snap.floatingPnl >= 0 ? "up" : "down"}>
           {snap.floatingPnl >= 0 ? "+" : ""}{snap.floatingPnl.toFixed(2)}
         </b>
       </div>
-      <div className="kv"><span>margin</span>
-        <b>{snap.usedMargin.toFixed(0)} / free {snap.freeMargin.toFixed(0)}</b>
+      <div className="kv"><span>{t("trade.margin")}</span>
+        <b>{snap.usedMargin.toFixed(0)} / {snap.freeMargin.toFixed(0)}</b>
       </div>
 
       {blackout?.blocked && (
         <p className="warn-box">
-          Trading paused for news — {blackout.reason}. Orders are refused until the
-          window passes.
+          {t("trade.blackout", { reason: blackout.reason ?? "" })}
         </p>
       )}
 
       {snap.stoppedOut && (
-        <p className="warn-box">
-          Account stopped out — equity reached zero and every position was force-closed.
-          Trading is halted.
-        </p>
+        <p className="warn-box">{t("trade.stoppedOut")}</p>
       )}
 
       <div className="order-form">
         <label>
-          type
+          {t("trade.type")}
           <select
             value={kind}
             onChange={(e) => setKind(e.target.value as typeof kind)}
           >
-            <option value="market">market</option>
-            <option value="limit">limit</option>
-            <option value="stop">stop</option>
-            <option value="stop-limit">stop-limit</option>
+            <option value="market">{t("trade.market")}</option>
+            <option value="limit">{t("trade.limit")}</option>
+            <option value="stop">{t("trade.stop")}</option>
+            <option value="stop-limit">{t("trade.stopLimit")}</option>
           </select>
         </label>
         <label>
-          lots
+          {t("trade.lots")}
           <input
             value={lots}
             onChange={(e) => setLots(e.target.value)}
@@ -163,15 +161,15 @@ export function TradePanel({
           />
         </label>
         <label>
-          SL (pts)
+          {t("trade.sl")}
           <input value={slPts} onChange={(e) => setSlPts(e.target.value)} inputMode="decimal" />
         </label>
         <label>
-          TP (pts)
+          {t("trade.tp")}
           <input value={tpPts} onChange={(e) => setTpPts(e.target.value)} inputMode="decimal" />
         </label>
         <label>
-          tags
+          {t("trade.tags")}
           <input
             value={tags}
             onChange={(e) => setTags(e.target.value)}
@@ -181,7 +179,7 @@ export function TradePanel({
         {kind !== "market" && (
           <>
             <label>
-              trigger
+              {t("trade.trigger")}
               <input
                 value={triggerPrice}
                 onChange={(e) => setTriggerPrice(e.target.value)}
@@ -191,7 +189,7 @@ export function TradePanel({
             </label>
             {kind === "stop-limit" && (
               <label>
-                limit
+                {t("trade.limit")}
                 <input
                   value={limitPrice}
                   onChange={(e) => setLimitPrice(e.target.value)}
@@ -206,14 +204,14 @@ export function TradePanel({
                 checked={oco}
                 onChange={(e) => setOco(e.target.checked)}
               />
-              OCO bracket
+              {t("trade.oco")}
             </label>
           </>
         )}
       </div>
 
       <div className="kv">
-        <span>risk / reward</span>
+        <span>{t("trade.riskReward")}</span>
         <b>
           {riskMoney.toFixed(0)} / {rewardMoney.toFixed(0)}
           {rr > 0 && ` (1:${rr.toFixed(2)})`}
@@ -221,7 +219,7 @@ export function TradePanel({
       </div>
 
       <div className="be-row">
-        trail
+        {t("trade.trail")}
         <select
           value={trailMode}
           onChange={(e) => {
@@ -230,10 +228,10 @@ export function TradePanel({
             session.setTrailing(m, Number(trailValue) || 0);
           }}
         >
-          <option value="off">off</option>
-          <option value="distance">close</option>
-          <option value="extreme">high/low</option>
-          <option value="atr">ATR</option>
+          <option value="off">{t("trade.off")}</option>
+          <option value="distance">{t("trade.trailClose")}</option>
+          <option value="extreme">{t("trade.trailExtreme")}</option>
+          <option value="atr">{t("trade.trailAtr")}</option>
         </select>
         <input
           value={trailValue}
@@ -251,7 +249,7 @@ export function TradePanel({
       </div>
 
       <label className="be-row">
-        auto break-even at
+        {t("trade.breakEven")}
         <input
           value={beR}
           onChange={(e) => {
@@ -262,7 +260,7 @@ export function TradePanel({
           inputMode="decimal"
           placeholder="0"
         />
-        R <span className="hint">(stop moves to entry; 0 = off)</span>
+        R <span className="hint">{t("trade.beHint")}</span>
       </label>
 
       <div className="row">
@@ -272,7 +270,7 @@ export function TradePanel({
           disabled={snap.stoppedOut || blackout?.blocked}
           title="Buy at ask"
         >
-          ▲ Buy {lotsValid ? lotsNum.toFixed(2) : ""}
+          ▲ {t("trade.buy")} {lotsValid ? lotsNum.toFixed(2) : ""}
         </button>
         <button
           className="sell-btn"
@@ -280,7 +278,7 @@ export function TradePanel({
           disabled={snap.stoppedOut || blackout?.blocked}
           title="Sell at bid"
         >
-          ▼ Sell {lotsValid ? lotsNum.toFixed(2) : ""}
+          ▼ {t("trade.sell")} {lotsValid ? lotsNum.toFixed(2) : ""}
         </button>
       </div>
 
@@ -288,10 +286,15 @@ export function TradePanel({
 
       {snap.pendingOrders.length > 0 && (
         <>
-          <h3>Pending ({snap.pendingOrders.length})</h3>
+          <h3>{t("trade.pending")} ({snap.pendingOrders.length})</h3>
           <table className="grid">
             <thead>
-              <tr><th>order</th><th>price</th><th>status</th><th /></tr>
+              <tr>
+                <th>{t("trade.order")}</th>
+                <th>{t("trade.price")}</th>
+                <th>{t("trade.status")}</th>
+                <th />
+              </tr>
             </thead>
             <tbody>
               {snap.pendingOrders.map((o) => (
@@ -304,7 +307,7 @@ export function TradePanel({
                     {o.limitPrice !== undefined && ` / ${o.limitPrice.toFixed(2)}`}
                   </td>
                   <td>
-                    {o.triggered ? "armed" : "waiting"}
+                    {o.triggered ? t("trade.armed") : t("trade.waiting")}
                     {o.ocoGroup && " · OCO"}
                   </td>
                   <td>
@@ -320,16 +323,22 @@ export function TradePanel({
               ))}
             </tbody>
           </table>
-          <button onClick={() => session.cancelAllOrders()}>Cancel all orders</button>
+          <button onClick={() => session.cancelAllOrders()}>{t("trade.cancelAll")}</button>
         </>
       )}
 
       {snap.positions.length > 0 && (
         <>
-          <h3>Open ({snap.positions.length})</h3>
+          <h3>{t("trade.open")} ({snap.positions.length})</h3>
           <table className="grid">
             <thead>
-              <tr><th>side</th><th>lots</th><th>entry</th><th>P/L</th><th /></tr>
+              <tr>
+                <th>{t("trade.side")}</th>
+                <th>{t("trade.lotsShort")}</th>
+                <th>{t("trade.entryPrice")}</th>
+                <th>{t("trade.pnl")}</th>
+                <th />
+              </tr>
             </thead>
             <tbody>
               {snap.positions.map((p) => {
@@ -371,31 +380,37 @@ export function TradePanel({
               })}
             </tbody>
           </table>
-          <p className="msg">
-            Drag the SL / TP lines on the chart to move them. A stop cannot cross the
-            entry — the drag is refused and the reason appears under the chart.
-          </p>
+          <p className="msg">{t("trade.dragHint")}</p>
           <button onClick={() => { const n = session.closeAll(); onFiled?.(n); }}>
-            Close all
+            {t("trade.closeAll")}
           </button>
         </>
       )}
 
       {snap.orderHistory.length > 0 && (
         <p className="msg">
-          Orders so far: {snap.orderHistory.filter((o) => o.status === "filled").length} filled,{" "}
-          {snap.orderHistory.filter((o) => o.status === "cancelled").length} cancelled
+          {t("trade.ordersSummary", {
+            filled: snap.orderHistory.filter((o) => o.status === "filled").length,
+            cancelled: snap.orderHistory.filter((o) => o.status === "cancelled").length,
+          })}
           {snap.orderHistory.some((o) => o.cancelReason?.includes("OCO"))
-            ? " (OCO cancelled the sibling)"
+            ? t("trade.ocoCancelled")
             : ""}
         </p>
       )}
 
       {snap.trades.length > 0 && (
         <>
-          <h3>Closed ({snap.trades.length})</h3>
+          <h3>{t("trade.closed")} ({snap.trades.length})</h3>
           <table className="grid">
-            <thead><tr><th>side</th><th>lots</th><th>P/L</th><th>why</th></tr></thead>
+            <thead>
+              <tr>
+                <th>{t("trade.side")}</th>
+                <th>{t("trade.lotsShort")}</th>
+                <th>{t("trade.pnl")}</th>
+                <th>{t("trade.why")}</th>
+              </tr>
+            </thead>
             <tbody>
               {snap.trades.slice(-8).reverse().map((t) => (
                 <tr key={t.id}>
@@ -407,10 +422,7 @@ export function TradePanel({
               ))}
             </tbody>
           </table>
-          <p className="msg">
-            Every closed trade is filed to the JOURNAL automatically, tagged with its
-            exit reason.
-          </p>
+          <p className="msg">{t("trade.filedNotice")}</p>
         </>
       )}
     </div>

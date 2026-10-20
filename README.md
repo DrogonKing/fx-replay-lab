@@ -23,7 +23,7 @@ so "no network" is structural rather than a flag someone can forget.
 ## Verified state
 
 ```
-621 unit tests, 26 files ..................... pass
+649 unit tests, 27 files ..................... pass
 strict typecheck (noUncheckedIndexedAccess) ... clean
 offline verification ......................... PASS
 CI config validation ......................... PASS
@@ -87,6 +87,11 @@ Those backtest numbers are a **negative result for a plain EMA(9/21) crossover o
   against the replay clock, not wall time — while closing a position stays allowed. Skipped
   rows are reported with line numbers instead of being dropped silently. See
   `docs/NEWS-CALENDAR.md`.
+- **English and Persian (RTL)**: switch in the toolbar, remembered across restarts. `dir`
+  on `<html>` is the only direction mechanism — grid and flex mirror themselves, and
+  explicit `[dir]` layout overrides actively *cancel* that mirror (measured: panel back at
+  offsetLeft 1160, i.e. LTR). Numbers stay Latin and LTR in both languages, because
+  `۱۹۹۱.۷۱` cannot be pasted into a broker statement. See `docs/I18N.md`.
 - **Journal**: entries with tags, R multiples, per-tag and per-month analytics, CSV
   export, row delete. **Closed trades are filed automatically** and tagged with the exit
   reason (`sl`, `tp`, `manual`, `stop-out`); money-at-risk is captured at entry so the R
@@ -140,6 +145,7 @@ bash scripts/orders-smoke.sh       # limit fills, invalid side refused, OCO pair
 bash scripts/position-smoke.sh     # level lines, real SL drag, break-even
 bash scripts/trailing-smoke.sh     # trail tightens, never closes early, partial close
 bash scripts/news-smoke.sh         # calendar import, persist, blackout refuses an order
+bash scripts/i18n-smoke.sh         # Persian switch, RTL mirror, Latin digits, reload
 ```
 
 ## Docs

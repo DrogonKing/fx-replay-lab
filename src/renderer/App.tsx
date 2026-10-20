@@ -44,6 +44,8 @@ import {
 import { TradePanel } from "./panels/TradePanel.js";
 import { NewsPanel } from "./panels/NewsPanel.js";
 import { newsMarkers, type CalendarEvent } from "../core/news.js";
+import { useI18n } from "./i18n-context.js";
+import { LOCALES } from "../core/i18n.js";
 import { DataPanel } from "./panels/DataPanel.js";
 import { StrategyPanel } from "./panels/StrategyPanel.js";
 import { JournalPanel } from "./panels/JournalPanel.js";
@@ -90,6 +92,7 @@ export function App(): JSX.Element {
   ]);
   const [status, setStatus] = useState<string>("");
   const [rail, setRail] = useState<RailTab>("data");
+  const { lang, setLang, t } = useI18n();
 
   /**
    * Time of the newest revealed bar, in epoch seconds.
@@ -758,13 +761,13 @@ export function App(): JSX.Element {
   return (
     <div className="app">
       <header className="toolbar">
-        <strong className="brand">FX Replay Lab</strong>
+        <strong className="brand">{t("app.name")}</strong>
         <span className={offline ? "badge off" : "badge on"}>
-          {offline ? "OFFLINE" : "LIVE"}
+          {offline ? t("app.offline") : t("app.live")}
         </span>
 
         <label>
-          TF{" "}
+          {t("app.tf")}{" "}
           <select
             value={tf.label}
             onChange={(e) => {
@@ -777,7 +780,7 @@ export function App(): JSX.Element {
         </label>
 
         <label>
-          custom{" "}
+          {t("app.custom")}{" "}
           <input
             className="w-16" value={custom} placeholder="7"
             onChange={(e) => setCustom(e.target.value)}
@@ -786,7 +789,7 @@ export function App(): JSX.Element {
         </label>
 
         <label>
-          TZ{" "}
+          {t("app.tz")}{" "}
           <select value={zone} onChange={(e) => setZone(e.target.value)}>
             {["UTC", "America/New_York", "Europe/London", "Europe/Berlin",
               "Asia/Tehran", "Asia/Dubai", "Asia/Tokyo", "Australia/Sydney"].map((z) => (
@@ -795,11 +798,24 @@ export function App(): JSX.Element {
           </select>
         </label>
 
-        <button onClick={() => setPlaying((p) => !p)}>{playing ? "⏸ Pause" : "▶ Play"}</button>
-        <button onClick={() => setRevealed((r) => Math.min(base.length, r + 1))}>⏭ Step</button>
+        <button onClick={() => setPlaying((p) => !p)}>
+          {playing ? t("app.pause") : t("app.play")}
+        </button>
+        <button onClick={() => setRevealed((r) => Math.min(base.length, r + 1))}>
+          {t("app.step")}
+        </button>
 
         <label>
-          speed{" "}
+          {t("app.language")}{" "}
+          <select value={lang} onChange={(e) => setLang(e.target.value as typeof lang)}>
+            {LOCALES.map((l) => (
+              <option key={l.lang} value={l.lang}>{l.label}</option>
+            ))}
+          </select>
+        </label>
+
+        <label>
+          {t("app.speed")}{" "}
           <select value={speed} onChange={(e) => setSpeed(Number(e.target.value))}>
             {SPEEDS.map((s) => <option key={s} value={s}>{s}x</option>)}
           </select>
@@ -862,13 +878,13 @@ export function App(): JSX.Element {
 
       <aside className="panel">
         <nav className="rail-tabs">
-          {(["data", "trade", "news", "indicators", "strategy", "journal"] as RailTab[]).map((t) => (
+          {(["data", "trade", "news", "indicators", "strategy", "journal"] as RailTab[]).map((tabId) => (
             <button
-              key={t}
-              className={rail === t ? "rail-tab active" : "rail-tab"}
-              onClick={() => setRail(t)}
+              key={tabId}
+              className={rail === tabId ? "rail-tab active" : "rail-tab"}
+              onClick={() => setRail(tabId)}
             >
-              {t}
+              {t(`tab.${tabId}`)}
             </button>
           ))}
         </nav>

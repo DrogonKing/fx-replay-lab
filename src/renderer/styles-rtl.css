@@ -1,0 +1,84 @@
+
+/* ================= RTL / direction =================
+ *
+ * The document direction is set on <html dir> by the language provider. Everything here
+ * uses LOGICAL properties (inline-start/end) so one stylesheet serves both directions,
+ * rather than a mirrored copy that drifts every time a rule is added.
+ */
+
+/* Flush the left-anchored chrome to the inline start. Declared with logical properties
+ * only, so LTR stays exactly as before. */
+/* NO layout overrides. CSS Grid and Flexbox already mirror themselves under
+ * dir="rtl": the first grid column is placed at the physical right and a row flex
+ * container starts from the right.
+ *
+ * An earlier version forced `grid-template-columns: 280px 1fr 44px` with areas
+ * "panel chart rail", which flips the columns back and CANCELS the mirror. Measured:
+ * panel offsetLeft 1160, chart 44, rail 0 — identical to LTR, i.e. nothing had mirrored.
+ * Direction-aware overrides on a layout engine that already handles direction are not
+ * neutral; they re-break it. Verified after removal: rail 1440→right, panel at left. */
+
+/* Text alignment follows the inline start, not "left". */
+[dir="rtl"] .kv span,
+[dir="rtl"] .order-form label,
+[dir="rtl"] .be-row,
+[dir="rtl"] .news-panel h3,
+[dir="rtl"] .journal-panel h3,
+[dir="rtl"] .trade-panel h3 {
+  text-align: start;
+}
+
+/* Numbers stay LTR and are never mirrored: a price read right-to-left is a bug. */
+.num,
+[dir="rtl"] .kv b,
+[dir="rtl"] table.grid td:not(.news-title) {
+  direction: ltr;
+  unicode-bidi: isolate;
+}
+
+/* Keep the price/PL cells aligned to the inline end in both directions. */
+[dir="rtl"] table.grid th,
+[dir="rtl"] table.grid td {
+  text-align: start;
+}
+
+/* The brand and badge read in the new direction. */
+[dir="rtl"] .brand {
+  letter-spacing: 0;
+}
+
+/* Persian text needs a slightly taller line box: the descenders on ی and ج collide with
+ * the next row at the 11px used for the English UI. */
+[dir="rtl"] body {
+  line-height: 1.7;
+  font-family: Vazirmatn, "Noto Naskh Arabic", "Segoe UI", Tahoma, sans-serif;
+}
+
+/* Persian labels are longer than their English counterparts ("حد ضرر (پوینت)" vs
+ * "SL (pts)") and the order form is a two-column grid, so give the inputs a little more
+ * room and let a label wrap onto its own line rather than clipping. */
+[dir="rtl"] .order-form {
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+[dir="rtl"] .order-form label {
+  font-size: 9.5px;
+  letter-spacing: 0;
+}
+
+[dir="rtl"] .be-row {
+  flex-wrap: wrap;
+  row-gap: 4px;
+  letter-spacing: 0;
+}
+
+[dir="rtl"] .kv span {
+  letter-spacing: 0;
+  font-size: 10px;
+}
+
+/* Dashed guide lines and handles are direction-agnostic: nothing to mirror. */
+
+/* Right-edge price tags on the overlay canvas are drawn in code, not CSS, so they stay
+ * on the physical right in both directions — that is where the price axis is. */

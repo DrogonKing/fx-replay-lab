@@ -623,3 +623,54 @@ thousands of shapes for no benefit.
 `3 / 2 / 1` impact split, 6 rows in SQLite, `marketRefused: true` with
 `"news blackout — high impact USD: Non-Farm Payrolls"`, pending order refused identically,
 and `opened 1 → closed 1` proving closing still works. 621 tests across 26 files.
+
+
+---
+
+## ADR-016: `dir="rtl"` on `<html>` is the entire direction mechanism
+
+**Decision.** Direction comes from one attribute on the document element. No per-component
+`rtl` props, no mirrored stylesheet, no `[dir]` overrides for anything the layout engine
+already handles.
+
+**Why.** CSS Grid and Flexbox mirror themselves when the document direction is RTL: column
+one moves to the physical right, and a row flex container starts from the right. That gives
+the panel on the left, the rail on the right and a reversed toolbar for free.
+
+**The bug.** The first version "helped" with explicit overrides:
+
+```css
+[dir="rtl"] .app {
+  grid-template-columns: 280px 1fr 44px;
+  grid-template-areas: "toolbar toolbar toolbar" "panel chart rail";
+}
+```
+
+Those columns are the LTR columns reversed, which cancels the mirror the engine had already
+applied. Measured in the app: `panel offsetLeft 1160, chart 44, rail 0` — byte-for-byte the
+LTR layout. The smoke test caught it only because it asserted `panelLeft < chartLeft`
+instead of trusting that setting `dir` had done something.
+
+**Rule.** Do not add direction-aware layout rules for grid or flex. Only things the engine
+cannot know need a rule: font stack, line-height, and letter-spacing (Persian has no
+cursive joins to preserve in Latin type, but Arabic script needs vertical room).
+
+**Numbers stay Latin and LTR.** Persian-Indic digits were rejected: prices and P/L are
+copied into broker statements and other tools, and `۱۹۹۱.۷۱` cannot be searched or pasted.
+Digits carry `direction: ltr; unicode-bidi: isolate` so the bidi algorithm cannot reorder
+them inside an RTL sentence.
+
+**The catalogue is typed and tested.** `missingKeys`, `extraKeys` and a placeholder-parity
+check run in the test suite. A half-translated UI is worse than an untranslated one, and an
+empty button is invisible; a missing key therefore renders as the key itself.
+
+**Known gap.** Core validation messages (`"buy limit 2050 is above the market..."`) are
+English strings produced by `src/core/`, surfaced verbatim in a Persian panel. Translating
+them means either threading a formatter through the pure core (which would make the core
+depend on presentation) or mapping error codes at the renderer. Error codes are the right
+answer and are not done yet; the docs say so rather than the UI pretending otherwise.
+
+**Evidence.** `scripts/i18n-smoke.sh`: `dir` flips ltr→rtl, tabs become
+داده/معامله/اخبار/اندیکاتور/استراتژی/دفتر, `panelLeft 0 < chartLeft 280`, `railLeft 1396`,
+`asciiDigits true / persianDigits false`, and the choice survives `location.reload()`.
+649 tests across 27 files.

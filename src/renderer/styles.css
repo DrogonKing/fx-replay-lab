@@ -24,14 +24,30 @@ html, body, #root {
   padding: 0 12px;
   background: #1e222d;
   border-bottom: 1px solid #2a2e39;
+  /* Scrollable but visually quiet. The default 12px scrollbar inside a 44px bar eats a
+   * quarter of the toolbar's height, and in RTL it renders at the inline-start (physical
+   * left) where it reads as a stray element. Scrolling still works. */
   overflow-x: auto;
+  scrollbar-width: thin;
+  scrollbar-color: #363a45 transparent;
   white-space: nowrap;
 }
 
 .brand { color: #f0b90b; letter-spacing: 0.5px; }
 .grow { flex: 1; }
 
-.toolbar label { display: inline-flex; align-items: center; gap: 4px; color: #787b86; }
+.toolbar label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: #787b86;
+  /* never let a label shrink to the point of clipping its Persian text */
+  flex-shrink: 0;
+}
+
+.toolbar::-webkit-scrollbar { height: 3px; }
+.toolbar::-webkit-scrollbar-track { background: transparent; }
+.toolbar::-webkit-scrollbar-thumb { background: #363a45; border-radius: 2px; }
 
 .toolbar select,
 .toolbar input,
