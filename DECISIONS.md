@@ -132,3 +132,113 @@ side; subtracting post-hoc would break `SL`/`TP` bar-level checks, which must be
 evaluated against the side actually traded.
 
 **Status.** Implemented in `account.ts` (Phase 3).
+
+
+---
+
+## ADR-005: Strategy code executes in the main process, not the renderer
+
+**Decision.** The JavaScript strategy API and the Pine interpreter both run in the
+Electron **main** process, reached over IPC. The renderer sends a series and code,
+receives plain result objects.
+
+**Why this had to be decided at all.** The renderer carries a strict CSP:
+`script-src 'self'`, no `'unsafe-eval'`, `connect-src 'none'`. That posture is
+correct for an app whose threat model includes a malicious CSV (a filename or a
+"notes" field must never become code). The consequence, discovered only when the
+first end-to-end run reported **0 trades**, is that `new Function(...)` throws
+inside the renderer:
+
+```
+compile error: Refused to evaluate a string as JavaScript because
+'unsafe-eval' is not an allowed source of script in the following
+Content Security Policy directive: "script-src 'self'".
+```
+
+**Alternatives.**
+1. *Add `'unsafe-eval'` to the CSP.* One line, and it makes every string in the
+   renderer potentially executable — exactly the hole the CSP was there to close.
+   Rejected.
+2. *Ship a sandboxed interpreter for the strategy API instead of eval.* Would mean
+   writing an interpreter for a language the spec defines as "plain JavaScript".
+   Weeks of work, and still a subset. Rejected as disproportionate.
+3. *Run in a worker.* Workers inherit the page CSP, so `new Function` is blocked
+   there too. Rejected on evidence, not preference.
+4. *Run in the main process.* Works, keeps the renderer CSP intact, and the IPC
+   boundary means only data crosses back.
+
+**Accepted cost, stated plainly.** A strategy or Pine script CAN execute arbitrary
+code with the app's privileges, because it is executed as code. That is inherent to
+"run the user's JavaScript" — the same trust boundary as opening a script file in an
+editor. It is documented in `docs/PINE-COMPATIBILITY.md` and the user guide rather
+than hidden. The mitigation is that strategies are user-authored, not downloaded:
+the app has no network path that can deliver a script.
+
+**Evidence.** `scripts/live-smoke.sh` before the change: `trades0`,
+`errs:["compile error: Refused to evaluate..."]`. After: `trades132,
+net profit-1170.60, errs:[]` on 5,821 real gold bars.
+
+---
+
+## ADR-006: `findSymbol` never throws; unknown names get a generic spec
+
+**Decision.** `findSymbol(name)` returns a dedicated spec when one exists, resolves
+known provider ids through an alias map (`GC=F` → `XAUUSD`, `^GSPC` → `SPX500`), and
+otherwise returns a generic spec rather than throwing. `hasDedicatedSpec(name)` lets
+callers warn if the money math is generic.
+
+**Why.** It used to throw. Live data arrives keyed by provider id (`GC=F`), and the
+strategy panel called `findSymbol(symbolId)` on mount — so every live-loaded symbol
+took the whole panel down, which surfaced as "0 trades" in the UI and looked like an
+engine bug. A generic spec produces slightly wrong position sizing, which is a
+visible, correctable problem; a thrown exception in the render path is a dead panel.
+
+**Consequence.** Position sizing for an unknown instrument is approximate until a
+spec is added. This is a deliberate trade: `hasDedicatedSpec` makes it detectable, and
+the alternative (silently reusing gold's contract size) would be worse.
+
+---
+
+## ADR-007: Two build outputs, one CommonJS marker at `dist/`
+
+**Decision.** `tsconfig.main.json` compiles `src/main` **and** `src/core` to
+`dist/{main,core}` as CommonJS, and `scripts/postbuild-main.mjs` writes
+`dist/package.json` with `{"type":"commonjs"}`. The repo root keeps
+`"type":"module"` for Vite.
+
+**Why.** Two distinct failures happened here, both worth recording:
+
+1. Without any marker, Node treats `dist/main/*.js` as ESM (because the root
+   package.json says `"type":"module"`) and every `exports`/`require` throws
+   `exports is not defined in ES module scope`. The app window opened and then the
+   main process died.
+2. The marker was originally written to `dist/main/package.json` only. Once the main
+   process started importing `dist/core` (for the strategy host), those files were
+   still resolved as ESM and the same error returned for a different reason.
+
+The marker must therefore sit at the common root of everything tsc emits.
+
+**Third failure, related.** An earlier `tsc` invocation without a stable `outDir`
+emitted `.js` files **next to the `.ts` sources**. Rollup then resolved
+`./series.js` to the stale `src/core/series.js` instead of the TypeScript source and
+the renderer build failed with `"seriesFromCandles" is not exported`. Fixed by
+deleting the 11 stale files; `.gitignore` does not cover `src/**/*.js`, so this can
+recur if a tool is misconfigured — a lint rule or a pre-build guard is the durable
+fix and is not yet in place.
+
+---
+
+## ADR-008: Honest degradation instead of retry storms
+
+**Decision.** The feed is cache-first. Provider failures degrade to cached data and
+report `degraded` with a message, rather than throwing or retrying. `rate-limited`
+carries a `retryAfterMs` and the orchestrator does not immediately retry.
+
+**Why.** A chart that blanks because a free API rate-limited would be useless in
+exactly the moment a trader is watching it. Yahoo in particular answers 429 with no
+body and will keep doing so if hammered. Degrading means the app is always usable
+with whatever is on disk, and the status line says what actually happened.
+
+**Evidence.** `tests/feed.test.ts`: stale-cache + rate-limit → `state: "degraded"`,
+`usable: true`, 4 cached bars served. Provider throwing a socket error →
+`state: "error"` with the message, never an unhandled rejection.
