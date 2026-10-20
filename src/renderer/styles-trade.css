@@ -138,6 +138,23 @@
   padding-left: 6px;
 }
 
+.row-actions {
+  display: flex;
+  gap: 2px;
+  justify-content: flex-end;
+}
+
+.row-half {
+  background: transparent;
+  border: none;
+  color: #787b86;
+  cursor: pointer;
+  font-size: 11px;
+  padding: 0 4px;
+}
+
+.row-half:hover { color: #f0b90b; }
+
 .row-del {
   background: transparent;
   border: none;

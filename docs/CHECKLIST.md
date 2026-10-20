@@ -20,6 +20,7 @@ bash scripts/journal-smoke.sh         # journal survives kill -9 + relaunch
 bash scripts/trade-smoke.sh           # trade -> SL -> journal entry, end to end
 bash scripts/orders-smoke.sh          # limit fills, invalid side refused, OCO pair
 bash scripts/position-smoke.sh        # level lines, real SL drag, break-even
+bash scripts/trailing-smoke.sh        # trail tightens, never closes early, partial close
 bash scripts/screenshot.sh /tmp/a.png # capture the UI
 ```
 
@@ -101,6 +102,8 @@ BAD PINE: "unsupported ta.notReal() (bar 0)"  ← precise, not silent
 - [x] SL/TP draggable on the chart, constrained so a stop cannot cross the entry
 - [x] Entry line shown but NOT draggable (it is history)
 - [x] Auto break-even at N×R, commission-aware, only ever tightens
+- [x] Trailing stop: close / high-low / ATR(14), applied after the bar (no same-bar exit)
+- [x] Partial close, refusing off-step remainders instead of rounding
 - [x] Positions table reads P/L from the engine (one source of truth)
 - [ ] Equity curve UI
 - [ ] Risk calculator UI

@@ -35,6 +35,8 @@ export function TradePanel({
   const [limitPrice, setLimitPrice] = useState("");
   const [oco, setOco] = useState(false);
   const [beR, setBeR] = useState("0");
+  const [trailMode, setTrailMode] = useState<"off" | "distance" | "extreme" | "atr">("off");
+  const [trailValue, setTrailValue] = useState("5");
 
   useEffect(() => session.subscribe(setSnap), [session]);
 
@@ -209,6 +211,36 @@ export function TradePanel({
         </b>
       </div>
 
+      <div className="be-row">
+        trail
+        <select
+          value={trailMode}
+          onChange={(e) => {
+            const m = e.target.value as typeof trailMode;
+            setTrailMode(m);
+            session.setTrailing(m, Number(trailValue) || 0);
+          }}
+        >
+          <option value="off">off</option>
+          <option value="distance">close</option>
+          <option value="extreme">high/low</option>
+          <option value="atr">ATR</option>
+        </select>
+        <input
+          value={trailValue}
+          onChange={(e) => {
+            setTrailValue(e.target.value);
+            const n = Number(e.target.value);
+            if (Number.isFinite(n)) session.setTrailing(trailMode, n);
+          }}
+          inputMode="decimal"
+          placeholder="5"
+        />
+        <span className="hint">
+          {trailMode === "atr" ? "× ATR(14)" : trailMode === "off" ? "" : "pts"}
+        </span>
+      </div>
+
       <label className="be-row">
         auto break-even at
         <input
@@ -302,7 +334,21 @@ export function TradePanel({
                     <td>{p.lots}</td>
                     <td>{p.entryPrice.toFixed(2)}</td>
                     <td className={pnl >= 0 ? "up" : "down"}>{pnl.toFixed(2)}</td>
-                    <td>
+                    <td className="row-actions">
+                      <button
+                        className="row-half"
+                        onClick={() => {
+                          const half = Math.max(
+                            minLot,
+                            Math.floor((p.lots / 2) / lotStep) * lotStep,
+                          );
+                          const r = session.closePartial(p.id, Number(half.toFixed(2)));
+                          if (!r.ok) setMsg(r.message ?? "partial close refused");
+                        }}
+                        title={`Close half (${(Math.max(minLot, Math.floor((p.lots / 2) / lotStep) * lotStep)).toFixed(2)} lots)`}
+                      >
+                        ½
+                      </button>
                       <button
                         className="row-del"
                         onClick={() => session.closeOne(p.id)}

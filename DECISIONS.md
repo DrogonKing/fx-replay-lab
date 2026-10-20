@@ -517,3 +517,61 @@ the trader reads is the wrong one to drift.
 `"a buy's stop must stay below the entry (1991.91)"` and the stop unchanged, and
 auto break-even at 0.2R moved the stop to `1991.94` (= entry + 0.03 commission) while the
 position stayed open.
+
+
+---
+
+## ADR-014: A trailing stop is applied after the bar, never within it
+
+**Decision.** `applyTrailing()` runs **after** `engine.onBar()`, while `autoBreakEven()`
+runs **before** it.
+
+**The bug that forced this.** Trailing was applied before the SL/TP pass so that "a stop
+tightened on this bar can protect this bar". That reasoning is wrong, and the failure is
+silent and expensive:
+
+```
+entry 2000.2 · bar: high 2030, low 1999, close 2025 · trail distance 10
+trail = 2025 - 10 = 2015
+engine then tests this SAME bar: low 1999 <= 2015  ->  "SL hit"
+exit 2000, pnl -2.30, on a trade that had touched 2030
+```
+
+It was found by a smoke test that asserted a position was still open after one bar and
+found it closed. Unit tests on `trailPrice()` alone could not catch it: the function was
+correct, the *call site* was wrong.
+
+The stop level is derived from the close, and the bar's low occurred before that close.
+Testing the level against that bar applies a decision to a period that preceded it — the
+mirror image of look-ahead. The causally sound rule is that the trail protects bar N+1.
+
+**Why break-even stays before the pass.** Break-even is a one-off jump to a fixed level
+(the entry, plus commission), not a per-bar ratchet. When price reaches the trigger on a
+bar, moving the stop there and then testing that bar is correct, because the level does
+not depend on where the bar closed.
+
+**Why `trailPrice` takes no next-bar data.** The structural guarantee is the signature:
+it receives one bar and cannot see another. The ordering rule above is what the caller
+must respect; keeping the function ignorant of later bars means a future caller cannot
+reintroduce the bug by "helpfully" passing more context.
+
+**Clamp removed from `trailPrice`.** An earlier version clamped a buy's trail to the
+bar's low, reasoning that a stop above the low would fire on that bar. Since `low <= close`
+on any normal bar, the clamp could only ever rewrite a valid, tighter stop *down* to the
+low — every trail collapsed to the bar low and trailing did nothing. Where a stop sits is
+the user's choice; whether it fires is the SL check's job.
+
+**A guard removed too.** `trailPrice` also refused any candidate above the entry for a
+buy, on the theory that a trail should not "lock in more than the move made". That is
+exactly what a trailing stop is for, and the guard blocked every useful trail after price
+ran. Both errors were caught by writing the tests from the specification rather than from
+the implementation.
+
+**Partial close refuses off-step remainders** instead of rounding. Rounding up closes more
+than asked; rounding down leaves a position the user thinks is gone. A refusal with the
+reason is the only honest option.
+
+**Evidence.** `scripts/trailing-smoke.sh`, 25 stepped bars:
+`firstSL 1984.39 -> lastSL 1988.26, tightened true, closedEarly -1, stillOpen true`, then
+`½` reduced 1.0 -> 0.5 with the position still open and a `partial` row (+42) reaching the
+journal. 556 tests across 24 files.

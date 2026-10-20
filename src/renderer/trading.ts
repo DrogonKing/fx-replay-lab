@@ -20,6 +20,7 @@ import {
   type PendingOrder, type PendingKind, type Bar,
 } from "../core/orders.js";
 import { constrainLevel, applyBreakEven } from "../core/position-manage.js";
+import { trailPrice, planPartialClose, atrSeries } from "../core/trailing.js";
 
 export interface SessionSnapshot {
   balance: number;
@@ -77,6 +78,12 @@ export class TradingSession {
   private orderSeq = 0;
   /** R multiple at which every stop moves to break-even; 0 = off */
   private breakEvenR = 0;
+  /** trailing mode; null = off */
+  private trailMode: "distance" | "extreme" | "atr" | null = null;
+  private trailValue = 0;
+  private atr: number[] = [];
+  /** index of the bar currently being processed, for ATR alignment */
+  private barIndex = 0;
 
   constructor(symbolId: string, account: Account = DEFAULT_ACCOUNT) {
     this.symbolId = symbolId;
@@ -240,6 +247,67 @@ export class TradingSession {
     this.breakEvenR = Math.max(0, r);
   }
 
+  /** 0 disables trailing. */
+  setTrailing(mode: "off" | "distance" | "extreme" | "atr", value: number): void {
+    this.trailMode = mode === "off" ? null : mode;
+    this.trailValue = Math.max(0, value);
+    this.emit();
+  }
+
+  /**
+   * Close part of a position.
+   *
+   * Refuses a size that would leave a remainder off the lot step: rounding up closes
+   * more than asked, rounding down leaves a position the user believes is gone.
+   */
+  closePartial(positionId: number, lots: number): { ok: boolean; message?: string } {
+    const pos = this.engine.positions.find((p) => p.id === positionId);
+    if (!pos) return { ok: false, message: "position not found" };
+
+    const plan = planPartialClose(pos.lots, lots, this.spec.lotStep);
+    if (!plan.valid) return { ok: false, message: plan.reason };
+
+    const r = this.engine.closePosition(pos, this.price, this.time, "Partial", plan.lots);
+    if (!r) return { ok: false, message: "engine refused the close" };
+    this.fileTrades([r.trade]);
+    this.emit();
+    return { ok: true };
+  }
+
+  /**
+   * Apply the trailing stop to every position, once per bar.
+   *
+   * Runs BEFORE the SL check so a trail tightened by this bar can protect it. The trail
+   * is computed from the SAME bar being processed; using the next bar's close would let
+   * a stop move on information the trade did not have.
+   */
+  private applyTrailing(bar: Bar, atrIndex: number): void {
+    if (this.trailMode === null || this.trailValue <= 0) return;
+    for (const p of this.engine.positions) {
+      const next = trailPrice({
+        side: p.side,
+        sl: p.sl,
+        entryPrice: p.entryPrice,
+        high: bar.high,
+        low: bar.low,
+        close: bar.close,
+        config: {
+          mode: this.trailMode,
+          value: this.trailValue,
+          atr: this.atr,
+          atrIndex,
+        },
+        round: (price) => Math.round(price * 10 ** this.spec.digits) / 10 ** this.spec.digits,
+      });
+      if (next !== null) p.sl = next;
+    }
+  }
+
+  /** Feed the ATR series used by ATR trailing. Called when the bar series changes. */
+  setAtrSeries(high: number[], low: number[], close: number[]): void {
+    this.atr = atrSeries(high, low, close, 14);
+  }
+
   closeAll(): number {
     if (this.engine.positions.length === 0) return 0;
     const closed = this.engine.closeAll(this.price, this.time, "Manual");
@@ -368,9 +436,11 @@ export class TradingSession {
    * journal immediately: a stop-out discovered later, when the user next opens the
    * journal tab, would be filed with the wrong timestamp and no tags.
    */
-  onBar(bar: Candle): Trade[] {
+  onBar(bar: Candle, barIndex?: number): Trade[] {
     this.price = bar.close;
     this.time = bar.time;
+    if (barIndex !== undefined) this.barIndex = barIndex;
+    else this.barIndex++;
 
     // Pending orders are evaluated BEFORE the engine's SL/TP pass. A limit that
     // fills on this bar is a position that existed for (part of) this bar, so its
@@ -378,12 +448,23 @@ export class TradingSession {
     // every entry gets a free bar of protection it did not have.
     this.processOrders(bar as Bar);
 
-    // Break-even runs BEFORE the SL/TP pass: if price has reached the trigger on this
-    // bar, the stop should already be at break-even when that same bar is tested.
+    // Break-even runs BEFORE the SL/TP pass: it is a one-off jump to the entry, and if
+    // price has already reached the trigger on this bar the stop should be there when
+    // the same bar is tested.
     this.autoBreakEven();
 
     const closed = this.engine.onBar(bar);
     if (closed.length > 0) this.fileTrades(closed);
+
+    // Trailing runs AFTER the SL/TP pass, deliberately. A trail derived from this bar's
+    // close cannot be tested against this bar: the low that would have hit it happened
+    // BEFORE the close that set it. Applying it in the same bar closed winning trades
+    // for a loss — entry 2000.2, bar high 2030/low 1999/close 2025 gave a stop of 2015,
+    // which the same bar's low of 1999 "hit", exiting at 2000 for -2.30 on a trade that
+    // had touched 2030. Setting it AFTER means it protects the NEXT bar, which is the
+    // only causally sound order.
+    this.applyTrailing(bar as Bar, this.barIndex);
+
     this.emit();
     return closed;
   }

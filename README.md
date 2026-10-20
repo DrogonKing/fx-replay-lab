@@ -23,7 +23,7 @@ so "no network" is structural rather than a flag someone can forget.
 ## Verified state
 
 ```
-505 unit tests, 22 files ..................... pass
+556 unit tests, 24 files ..................... pass
 strict typecheck (noUncheckedIndexedAccess) ... clean
 offline verification ......................... PASS
 CI config validation ......................... PASS
@@ -75,6 +75,12 @@ Those backtest numbers are a **negative result for a plain EMA(9/21) crossover o
   Auto break-even moves the stop to the entry (plus commission) once a position reaches
   a configurable R multiple, and only ever tightens. See
   `docs/POSITION-MANAGEMENT.md`.
+- **Trailing stop and partial close**: trail behind the close, the bar's high/low, or
+  `N × ATR(14)`. A trail derived from one bar only protects the **next** — applying it to
+  the bar that created it closes winning trades for a loss, which is why the engine
+  orders it after the SL/TP pass. The `½` button closes part of a position, produces its
+  own journal entry, splits commission proportionally, and refuses a remainder that is
+  off the lot step rather than rounding. See `docs/TRAILING.md`.
 - **Journal**: entries with tags, R multiples, per-tag and per-month analytics, CSV
   export, row delete. **Closed trades are filed automatically** and tagged with the exit
   reason (`sl`, `tp`, `manual`, `stop-out`); money-at-risk is captured at entry so the R
@@ -126,6 +132,7 @@ bash scripts/journal-smoke.sh      # journal survives kill -9 + relaunch
 bash scripts/trade-smoke.sh        # trade -> SL fires -> journal entry, end to end
 bash scripts/orders-smoke.sh       # limit fills, invalid side refused, OCO pair
 bash scripts/position-smoke.sh     # level lines, real SL drag, break-even
+bash scripts/trailing-smoke.sh     # trail tightens, never closes early, partial close
 ```
 
 ## Docs

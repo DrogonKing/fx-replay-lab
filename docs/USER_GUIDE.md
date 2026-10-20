@@ -170,6 +170,34 @@ entry would close the trade slightly negative, which is not break-even.
 It only ever tightens: if your stop is already at or better than break-even, nothing
 moves. Leave it at `0` to turn it off.
 
+### Trailing stop
+
+Pick a mode in the trade panel and a distance:
+
+| Mode | Trails behind |
+|---|---|
+| close | where the bar closed |
+| high/low | the furthest the bar reached — tighter |
+| ATR | `N × ATR(14)` — adapts to volatility |
+
+**It only ever tightens**, and it takes effect from the **next** bar. That second rule
+is deliberate: a trail calculated from a bar's close cannot be tested against that same
+bar, because the bar's low happened before its close. Doing it the other way closes
+winning trades at a loss — a $2 loss on a trade that had run 30 points in profit.
+
+### Partial close
+
+The `½` button closes half a position. The closed part gets its own journal row tagged
+`partial`, takes its share of the commission, and the stop and target keep protecting
+what is left.
+
+Sizes that leave a remainder off the lot step are refused, not rounded — rounding up
+closes more than you asked, rounding down leaves a position you think is gone.
+
+**A small R on a partial is not a bug.** R is profit ÷ money-at-risk, and risk scales with
+the lots. A 60-point stop on 0.5 lots of gold risks $3,000, so a $42 profit is 0.014R.
+That is an honest reading of an oversized position.
+
 ### Closed trades go to the journal automatically
 
 Every close — manual, stop, target, stop-out — creates a journal entry carrying:

@@ -591,8 +591,27 @@ export function App(): JSX.Element {
       close: base.close[i]!,
       volume: base.volume[i]!,
     };
-    session.onBar(bar);
+    session.onBar(bar, i);
   }, [base, revealed, session]);
+
+  /**
+   * ATR series for ATR trailing, computed once per loaded series.
+   *
+   * Only the revealed prefix matters, but the whole array is computed because the
+   * replay can reveal more bars later without reloading: recomputing on every step
+   * would cost a full pass over 30k bars per bar advanced.
+   */
+  useEffect(() => {
+    if (base.length === 0) return;
+    // The WHOLE series: the session indexes ATR by the absolute bar index, which runs
+    // to the end of the replay. A truncated array would silently return ATR 0 past the
+    // cut, turning trailing off mid-session.
+    session.setAtrSeries(
+      Array.from(base.high),
+      Array.from(base.low),
+      Array.from(base.close),
+    );
+  }, [base, session]);
 
   // Keep the overlay's queued shapes in sync with the model. Every mutation bumps
   // `revision`, so this is the single place that pushes drawings to the canvas.
