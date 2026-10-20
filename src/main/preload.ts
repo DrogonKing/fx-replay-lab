@@ -37,6 +37,25 @@ const api = {
   fetchJson: (url: string, headers: Record<string, string>): Promise<NetResponse> =>
     ipcRenderer.invoke("net:fetchJson", url, headers),
 
+  // Persistence. Drawings are keyed by symbol+timeframe so a line drawn on M5
+  // does not appear at a random place on D1.
+  /** Returns the stored JSON string; the renderer parses it exactly once. */
+  loadDrawings: (workspace: string): Promise<{
+    raw: string | null; updatedAt: number | null;
+  }> => ipcRenderer.invoke("db:loadDrawings", workspace),
+  saveDrawings: (workspace: string, drawings: unknown[]): Promise<{ ok: boolean }> =>
+    ipcRenderer.invoke("db:saveDrawings", workspace, drawings),
+
+  loadJournal: (): Promise<{ value: unknown[]; rejected: string[] }> =>
+    ipcRenderer.invoke("db:loadJournal"),
+  saveJournal: (entries: unknown[]): Promise<{ ok: boolean }> =>
+    ipcRenderer.invoke("db:saveJournal", entries),
+
+  getSetting: (key: string): Promise<string | null> =>
+    ipcRenderer.invoke("db:getSetting", key),
+  setSetting: (key: string, value: string): Promise<{ ok: boolean }> =>
+    ipcRenderer.invoke("db:setSetting", key, value),
+
   // Strategy execution. Runs in main because the renderer CSP forbids eval.
   backtest: (req: unknown): Promise<unknown> =>
     ipcRenderer.invoke("strategy:backtest", req),

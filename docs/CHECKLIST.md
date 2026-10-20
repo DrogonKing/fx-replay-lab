@@ -14,6 +14,9 @@ node scripts/verify-workflow.mjs      # PASS - CI structurally sound
 bash scripts/headless-smoke.sh        # boots, renders, DOM asserted
 bash scripts/live-smoke.sh            # real Yahoo fetch + real backtest via UI
 bash scripts/pine-smoke.sh            # Pine parse+evaluate through IPC
+bash scripts/draw-smoke.sh            # real pointer events paint, undo repaints
+bash scripts/persist-smoke.sh         # drawings survive kill -9 + relaunch
+bash scripts/journal-smoke.sh         # journal survives kill -9 + relaunch
 bash scripts/screenshot.sh /tmp/a.png # capture the UI
 ```
 
@@ -63,7 +66,9 @@ BAD PINE: "unsupported ta.notReal() (bar 0)"  ← precise, not silent
 - [x] Tool rail with 9 grouped flyouts, undo/redo/delete, Esc to cancel
 - [x] Verified by real pointer events in the running app: trend line, Fib (7 levels),
       rectangle all paint; undo repaints correctly
-- [ ] Drawing persistence per symbol (model is session-only)
+- [x] Drawing persistence per `symbol::timeframe` workspace in SQLite, autosaved
+      (600 ms debounce), restored on launch — proven across a `kill -9` restart
+- [x] Corrupt rows dropped and counted, never fatal
 - [ ] Import dialog with column mapping UI (auto-detect only today)
 - [ ] Data quality report UI
 - [ ] Symbol manager UI
@@ -138,9 +143,11 @@ BAD PINE: "unsupported ta.notReal() (bar 0)"  ← precise, not silent
 - [x] Analytics: count, net, win rate, expectancy, avg/best/worst R, by tag, by month
 - [x] CSV export
 - [x] UI panel
-- [ ] Persistence to SQLite from the UI
+- [x] Persistence to SQLite, autosaved, restored on launch — proven across a restart
+- [x] Row-level delete and "clear samples"
+- [x] Sample rows are explicitly tagged `demo` and the UI warns they are in the stats
 - [ ] R-multiple calendar heatmap, PDF export
-- [ ] Automatic capture of closed trades
+- [ ] Automatic capture of closed trades from the account engine
 
 ## Phase 9 — Polish and release
 - [x] Offline verification (static + CSP + main guards)

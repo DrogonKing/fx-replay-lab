@@ -7,7 +7,10 @@
  * The analytics functions are pure and exported so they are unit-testable without
  * Electron, and so the same numbers back the CSV export.
  */
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import {
+  parseJournal, serialiseJournal, type JournalEntry as PersistedEntry,
+} from "../../core/persist.js";
 
 export interface JournalEntry {
   id: string;
@@ -111,32 +114,99 @@ export function journalToCsv(entries: readonly JournalEntry[]): string {
   return [head, ...rows].join("\n");
 }
 
+interface JournalBridge {
+  loadJournal?: () => Promise<{ value: unknown[]; rejected: string[] }>;
+  saveJournal?: (entries: unknown[]) => Promise<{
+    ok: boolean; accepted?: number; rejected?: string[];
+  }>;
+}
+
 export function JournalPanel(): JSX.Element {
   const [entries, setEntries] = useState<JournalEntry[]>([]);
   const [tagInput, setTagInput] = useState("");
+  const [note, setNote] = useState("");
 
   const stats = useMemo(() => computeJournalStats(entries), [entries]);
 
-  const addDemo = (): void => {
+  const bridge = (): JournalBridge =>
+    (globalThis as unknown as { fxlab?: JournalBridge }).fxlab ?? {};
+
+  /**
+   * Guards the load→save race. Without it the autosave fires on the first render
+   * with the empty starting state and immediately overwrites the stored journal.
+   */
+  const hydrated = useRef(false);
+
+  useEffect(() => {
+    const api = bridge();
+    if (!api.loadJournal) return;
+    let cancelled = false;
+    void api.loadJournal().then((res) => {
+      if (cancelled) return;
+      const parsed = parseJournal({ entries: res.value });
+      setEntries(parsed.value);
+      hydrated.current = true;
+      if (res.rejected.length > 0 || parsed.rejected.length > 0) {
+        setNote(
+          `Dropped ${res.rejected.length + parsed.rejected.length} damaged ` +
+          `journal row(s) on load.`,
+        );
+      }
+    }).catch((e: Error) => {
+      hydrated.current = true;
+      setNote(`Could not load the journal: ${e.message}`);
+    });
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    if (!hydrated.current) return;
+    const api = bridge();
+    if (!api.saveJournal) return;
+    const t = window.setTimeout(() => {
+      const payload = serialiseJournal(entries);
+      // api.loadJournal was checked above, but saveJournal is a separate optional
+      // member; capture it so the closure keeps the narrowed type.
+      const save = api.saveJournal;
+      if (!save) return;
+      void save(payload.entries as unknown[]);
+    }, 400);
+    return () => window.clearTimeout(t);
+  }, [entries]);
+
+  /**
+   * Adds a SAMPLE row, explicitly tagged `demo`.
+   *
+   * This used to generate a random P/L and file it as a real trade, which quietly
+   * corrupts every statistic on the panel. A journal whose numbers you cannot trust
+   * is worse than no journal, so the row is labelled and its tag is not optional.
+   */
+  const addSample = (): void => {
     const now = Math.floor(Date.now() / 1000);
-    const pnl = Math.round((Math.random() - 0.4) * 200);
+    const tags = tagInput
+      ? tagInput.split(",").map((t) => t.trim()).filter(Boolean)
+      : [];
     setEntries((l) => [
       ...l,
       {
-        id: String(Date.now()),
+        id: `demo_${Date.now()}`,
         symbol: "XAUUSD",
-        side: Math.random() > 0.5 ? "buy" : "sell",
+        side: "buy",
         lots: 0.1,
         entryTime: now - 3600,
         exitTime: now,
         entryPrice: 2000,
-        exitPrice: 2000 + pnl / 10,
-        pnl,
+        exitPrice: 2010,
+        pnl: 100,
         risk: 100,
-        tags: tagInput ? tagInput.split(",").map((t) => t.trim()).filter(Boolean) : ["demo"],
-        notes: "",
+        tags: ["demo", ...tags],
+        notes: "sample row — replace with a real trade",
       },
     ]);
+  };
+
+  const remove = (id: string): void => {
+    setEntries((l) => l.filter((e) => e.id !== id));
   };
 
   const download = (): void => {
@@ -159,7 +229,7 @@ export function JournalPanel(): JSX.Element {
           value={tagInput}
           onChange={(e) => setTagInput(e.target.value)}
         />
-        <button onClick={addDemo}>+ Trade</button>
+        <button onClick={addSample} title="Adds a labelled sample row">+ Sample</button>
       </div>
 
       {stats.count === 0 && <p className="msg">No trades recorded yet.</p>}
@@ -208,7 +278,44 @@ export function JournalPanel(): JSX.Element {
             </tbody>
           </table>
 
-          <button onClick={download}>⬇ Export CSV</button>
+          <div className="row">
+            <button onClick={download}>⬇ Export CSV</button>
+            <button
+              onClick={() => setEntries((l) => l.filter((e) => !e.tags.includes("demo")))}
+              title="Remove the labelled sample rows"
+            >
+              ✕ Clear samples
+            </button>
+          </div>
+
+          {entries.some((e) => e.tags.includes("demo")) && (
+            <p className="msg">
+              Rows tagged <b>demo</b> are samples and are included in the statistics
+              above. Clear them before trusting the numbers.
+            </p>
+          )}
+
+          {entries.length > 0 && (
+            <>
+              <h3>Rows</h3>
+              <table className="grid">
+                <thead><tr><th>symbol</th><th>side</th><th>P/L</th><th>R</th><th /></tr></thead>
+                <tbody>
+                  {entries.slice(-20).reverse().map((e) => (
+                    <tr key={e.id}>
+                      <td>{e.symbol}</td>
+                      <td>{e.side}</td>
+                      <td className={e.pnl >= 0 ? "up" : "down"}>{e.pnl.toFixed(0)}</td>
+                      <td>{e.risk > 0 ? (e.pnl / e.risk).toFixed(2) : "—"}</td>
+                      <td>
+                        <button className="row-del" onClick={() => remove(e.id)} title="Delete">✕</button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </>
+          )}
         </>
       )}
     </div>

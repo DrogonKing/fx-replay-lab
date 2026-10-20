@@ -290,3 +290,60 @@ repaints the *last queued* shapes rather than the new ones). The fix is one funn
 for every mutation (`applyDrawings`), `setCurrent()` instead of `reset()` for
 undo/redo, and a single effect that re-queues the overlay whenever the collection
 changes.
+
+
+---
+
+## ADR-010: Drawings and journal stored as JSON blobs, parsed at exactly one layer
+
+**Decision.** `drawing_sets` holds one row per `symbol::timeframe` workspace with a
+JSON payload; `journal` holds one row per entry. Both are validated on the way IN
+and on the way OUT by the same pure functions in `src/core/persist.ts`.
+
+**Why a blob instead of a row per shape.** A drawing is a heterogeneous record: a
+Fib retracement carries `levels`, a text tool carries `text`, a position tool
+carries three points. A relational schema would need a column per optional field and
+a migration every time a tool gains a property. The whole set is loaded at once,
+never queried by attribute, and per-workspace payloads are a few KB. Row-per-shape
+buys nothing here and costs a schema churn on every feature.
+
+**Key by symbol AND timeframe.** A trend line drawn on M5 has no meaning on D1 —
+its two points would land at unrelated prices. `workspaceKey(symbol, timeframe)`
+keeps them apart. Keying on symbol alone would make drawings appear in the wrong
+place after a timeframe switch, which looks like data corruption to the user.
+
+**The bug this design produced, and the rule that fixes it.** Loaded drawings came
+back as **"dropped 2 damaged"** while the stored payload was provably perfect:
+
+```
+{"version":1,"drawings":[{"id":"dr_…","kind":"hline",
+  "points":[{"t":1704201600,"p":2011.5696…}], …}]}
+```
+
+The wire format uses short keys `{t, p}`; the in-memory `Drawing` uses
+`{time, price}`. `db.loadDrawings` decoded wire → `Drawing`, and then the renderer
+called `parseDrawings` on the already-decoded value. The parser read `.t`/`.p` off
+objects that only had `.time`/`.price`, got `undefined`, and rejected every shape as
+non-finite. The save was always correct; the double decode destroyed the read.
+
+**Rule.** Parse untrusted data at exactly ONE boundary. `db.loadDrawings` now returns
+the raw JSON string and the renderer parses once. The type is `RawLoadResult`, so a
+second parse cannot compile by accident.
+
+**Reject, don't throw, and report counts.** One corrupt row (crash mid-write, a
+hand-edited file, a downgrade) must not make a workspace unloadable. Bad entries are
+dropped and the count is surfaced in the status line. On the write path the payload
+is round-tripped through the parser *before* it reaches disk, so data the reader
+would refuse is never written in the first place.
+
+**Autosave is debounced and gated.** 600 ms for drawings, 400 ms for the journal, and
+a `hydrated`/`loading` flag blocks the save effect until the initial load settles.
+Without that gate the first render saves the empty starting state over the stored
+data — the classic "my work vanished" failure. A drag would otherwise write on every
+pointer move.
+
+**Evidence.** `scripts/persist-smoke.sh` draws two shapes, reads the SQLite file
+directly (`shapes=2 kinds=['hline','rectangle']`), `kill -9`s the app, relaunches and
+asserts `railCount: "2", paintedPixels: 4034`. `scripts/journal-smoke.sh` does the
+same for two journal rows and confirms `trades2, net P/L200` after the restart.
+`tests/persist.test.ts` round-trips every shape kind and every corrupt-input case.

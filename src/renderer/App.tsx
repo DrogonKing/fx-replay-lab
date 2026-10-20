@@ -34,6 +34,9 @@ import {
 import { nearestDrawing } from "../core/drawing-interaction.js";
 import { DrawingToolbar, TOOL_LABELS } from "./DrawingToolbar.js";
 import { DrawingOverlay, toData } from "./overlay.js";
+import {
+  parseDrawings, serialiseDrawings, workspaceKey,
+} from "../core/persist.js";
 import { DataPanel } from "./panels/DataPanel.js";
 import { StrategyPanel } from "./panels/StrategyPanel.js";
 import { JournalPanel } from "./panels/JournalPanel.js";
@@ -451,6 +454,76 @@ export function App(): JSX.Element {
   useEffect(() => {
     repaint();
   }, [revision, view, hoverId, repaint]);
+
+  // ------------------------------------------------ persistence: drawings
+  const workspace = workspaceKey(symbolId, tf.label);
+  /**
+   * True while a load is settling. Without it the save effect fires immediately
+   * after hydration and writes the EMPTY pre-load collection back over the stored
+   * drawings — the classic "my drawings disappeared" bug.
+   */
+  const loadingRef = useRef(false);
+
+  useEffect(() => {
+    const api = (globalThis as unknown as { fxlab?: { loadDrawings?: (w: string) => Promise<{
+      raw: string | null; updatedAt: number | null;
+    }> } }).fxlab;
+    if (!api?.loadDrawings) return;
+
+    let cancelled = false;
+    loadingRef.current = true;
+    void api.loadDrawings(workspace).then((res) => {
+      if (cancelled) return;
+
+      // The single decode point. The main process deliberately hands over the raw
+      // JSON so the wire form is parsed exactly once — parsing a decoded Drawing[]
+      // again rejects every shape, because the wire keys are {t,p}, not
+      // {time,price}.
+      let parsed: { value: Drawing[]; rejected: string[] } = { value: [], rejected: [] };
+      if (res.raw !== null) {
+        try {
+          parsed = parseDrawings(JSON.parse(res.raw));
+        } catch (e) {
+          parsed = { value: [], rejected: [`stored JSON is corrupt: ${(e as Error).message}`] };
+        }
+      }
+
+      drawingsRef.current.reset(parsed.value);
+      setDrawCount(parsed.value.length);
+      setRevision((r) => r + 1);
+      loadingRef.current = false;
+      if (parsed.rejected.length > 0) {
+        setStatus(
+          `Loaded ${parsed.value.length} drawings; dropped ${parsed.rejected.length} damaged`,
+        );
+      }
+    }).catch((e: Error) => {
+      loadingRef.current = false;
+      setStatus(`Could not load drawings: ${e.message}`);
+    });
+
+    return () => { cancelled = true; };
+  }, [workspace]);
+
+  /** Debounced autosave: a drag would otherwise write on every pointer move. */
+  const saveTimer = useRef<number | null>(null);
+  useEffect(() => {
+    if (loadingRef.current) return;
+    const api = (globalThis as unknown as { fxlab?: {
+      saveDrawings?: (w: string, d: unknown[]) => Promise<{ ok: boolean }>;
+    } }).fxlab;
+    if (!api?.saveDrawings) return;
+
+    if (saveTimer.current !== null) window.clearTimeout(saveTimer.current);
+    saveTimer.current = window.setTimeout(() => {
+      const payload = serialiseDrawings(drawingsRef.current.get());
+      void api.saveDrawings!(workspace, payload.drawings as unknown[]);
+    }, 600);
+
+    return () => {
+      if (saveTimer.current !== null) window.clearTimeout(saveTimer.current);
+    };
+  }, [revision, workspace]);
 
   const currentTime = view.length > 0 ? view.time[view.length - 1]! : 0;
   const lastBar = view.length > 0

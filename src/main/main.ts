@@ -14,6 +14,7 @@ import { app, BrowserWindow, ipcMain, shell } from "electron";
 import path from "node:path";
 import fs from "node:fs";
 import { openDatabase, type Db } from "./db.js";
+import { parseDrawings, parseJournal } from "../core/persist.js";
 import { fetchJson } from "./net.js";
 import {
   handleBacktest, handleOptimize, handleWalkForward, handleMonteCarlo,
@@ -80,6 +81,50 @@ app.whenReady().then(() => {
     offline: true,
   }));
   ipcMain.handle("accounts:list", () => db!.listAccounts());
+
+  // ---- persistence ----
+  // Passed as unknown and validated inside db.ts (parseDrawings/parseJournal), so a
+  // malformed payload from the renderer can never corrupt the store.
+  ipcMain.handle("db:loadDrawings", (_e, workspace: string) => {
+    if (typeof workspace !== "string" || workspace.length === 0) {
+      return { raw: null, updatedAt: null };
+    }
+    // Returns the stored JSON string untouched: the renderer parses it once. Doing
+    // it here too made every drawing look damaged (wire {t,p} vs drawing {time,price}).
+    return db!.loadDrawings(workspace);
+  });
+  ipcMain.handle("db:saveDrawings", (_e, workspace: string, drawings: unknown[]) => {
+    if (typeof workspace !== "string" || workspace.length === 0) {
+      return { ok: false as const, message: "empty workspace key" };
+    }
+    if (!Array.isArray(drawings)) {
+      return { ok: false as const, message: "drawings must be an array" };
+    }
+    // Round-trip through the parser before writing: this rejects anything the
+    // reader would later refuse, so bad data never reaches the file at all.
+    const checked = parseDrawings({ drawings });
+    db!.saveDrawings(workspace, checked.value);
+    return { ok: true as const, accepted: checked.value.length, rejected: checked.rejected };
+  });
+
+  ipcMain.handle("db:loadJournal", () => db!.loadJournal());
+  ipcMain.handle("db:saveJournal", (_e, entries: unknown[]) => {
+    if (!Array.isArray(entries)) {
+      return { ok: false as const, message: "entries must be an array" };
+    }
+    const checked = parseJournal({ entries });
+    db!.saveJournal(checked.value);
+    return { ok: true as const, accepted: checked.value.length, rejected: checked.rejected };
+  });
+
+  ipcMain.handle("db:getSetting", (_e, key: string) => db!.getSetting(key));
+  ipcMain.handle("db:setSetting", (_e, key: string, value: string) => {
+    if (typeof key !== "string" || typeof value !== "string") {
+      return { ok: false as const, message: "key and value must be strings" };
+    }
+    db!.setSetting(key, value);
+    return { ok: true as const };
+  });
 
   // Strategy execution lives here because the renderer CSP blocks `new Function`
   // (no 'unsafe-eval'). Results cross IPC as plain data.
