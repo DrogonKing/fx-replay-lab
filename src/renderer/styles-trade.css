@@ -132,6 +132,45 @@
   color: #5d606b;
 }
 
+/* ================= sessions panel ================= */
+
+.sessions-panel { padding: 8px 10px; }
+
+.session-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 8px 0;
+}
+
+.session-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: #d1d4dc;
+}
+
+.session-row .session-name { flex: 1; }
+
+.session-row .session-hours {
+  color: #787b86;
+  font-size: 10px;
+  direction: ltr;
+}
+
+.swatch {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border-radius: 2px;
+  flex-shrink: 0;
+  vertical-align: middle;
+  margin-inline-end: 4px;
+}
+
+.sessions-table td:first-child { white-space: nowrap; }
+
 /* ================= news panel ================= */
 
 .news-panel { padding: 8px 10px; }

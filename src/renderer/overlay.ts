@@ -16,6 +16,16 @@ import type { RenderShape } from "../core/drawing-interaction.js";
 import { renderDrawing, renderPreview, type InteractionState } from "../core/drawing-interaction.js";
 import type { PriceLine } from "../core/position-manage.js";
 
+/** A session wash behind the candles. */
+export interface SessionBand {
+  from: number;
+  to: number;
+  colour: string;
+  label?: string;
+  /** 0-1; defaults to 0.07 so candles stay readable */
+  alpha?: number;
+}
+
 export interface OverlayTheme {
   background: string;
   grid: string;
@@ -163,6 +173,9 @@ export class DrawingOverlay {
     const shapes = this.pendingShapes;
     if (!shapes) return;
 
+    // Bands first: they are a background wash and must never cover a candle or a drawing.
+    this.paintSessionBands();
+
     for (const shape of shapes.drawings) {
       this.paintShape(shape, shape.id === this.hoveredId, shape.id === this.selectedId);
     }
@@ -198,6 +211,58 @@ export class DrawingOverlay {
   private positionLevels: PriceLine[] = [];
 
   /**
+   * Session bands: vertical washes behind the candles marking London / New York / Tokyo /
+   * Sydney. Chart context, not annotations, so they never reach SQLite.
+   */
+  private sessionBands: SessionBand[] = [];
+
+  /**
+   * Paint the session bands.
+   *
+   * A translucent wash from the top to the bottom of the plot area, plus a label at the
+   * top when the band is wide enough to fit one: several short bands with labels would be
+   * unreadable, so a 40px minimum is applied rather than printing every name.
+   */
+  private paintSessionBands(): void {
+    const ctx = this.ctx;
+    if (!ctx || this.sessionBands.length === 0) return;
+    const rect = this.canvas.getBoundingClientRect();
+
+    for (const band of this.sessionBands) {
+      const x1 = this.timeToX(band.from);
+      const x2 = this.timeToX(band.to);
+      if (x1 === null || x2 === null) continue;
+      const left = Math.min(x1, x2);
+      const width = Math.abs(x2 - x1);
+      if (width < 1) continue;
+
+      ctx.save();
+      ctx.globalAlpha = band.alpha ?? 0.07;
+      ctx.fillStyle = band.colour;
+      ctx.fillRect(left, 0, width, rect.height);
+      ctx.restore();
+
+      if (width >= 40 && band.label) {
+        ctx.save();
+        ctx.globalAlpha = 0.75;
+        ctx.fillStyle = band.colour;
+        ctx.font = "600 9px system-ui, sans-serif";
+        ctx.textBaseline = "top";
+        ctx.fillText(band.label, left + 3, 4);
+        ctx.restore();
+      }
+    }
+  }
+
+  /** Map a time to an x coordinate, or null when it is off-screen. */
+  private timeToX(time: number): number | null {
+    // On the TIME SCALE, not the series: only the time scale knows the mapping, and the
+    // series API has no timeToCoordinate.
+    const x = this.chart.timeScale().timeToCoordinate(time as never);
+    return x === null ? null : x;
+  }
+
+  /**
    * Queue drawings for painting.
    *
    * `rightEdge` is the time of the last visible bar, so rays/channels extend to
@@ -210,7 +275,9 @@ export class DrawingOverlay {
     hoveredId: string | null,
     selectedId: string | null,
     positionLevels: readonly PriceLine[] = [],
+    sessionBands: readonly SessionBand[] = [],
   ): void {
+    this.sessionBands = [...sessionBands];
     this.hoveredId = hoveredId;
     this.selectedId = selectedId;
     this.positionLevels = [...positionLevels];

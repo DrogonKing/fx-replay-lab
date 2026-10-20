@@ -23,6 +23,7 @@ bash scripts/position-smoke.sh        # level lines, real SL drag, break-even
 bash scripts/trailing-smoke.sh        # trail tightens, never closes early, partial close
 bash scripts/news-smoke.sh            # CSV import, persist, blackout refuses an order
 bash scripts/i18n-smoke.sh            # Persian switch, RTL mirror, Latin digits, reload
+bash scripts/sessions-smoke.sh        # bands paint, DST shift, attribution adds up
 bash scripts/screenshot.sh /tmp/a.png # capture the UI
 ```
 
@@ -140,7 +141,12 @@ BAD PINE: "unsupported ta.notReal() (bar 0)"  ← precise, not silent
 - [x] Calendar UI with upcoming events and a live trading status line
 - [x] Markers revealed by replay time (visible window only, one per timestamp)
 - [x] Avoid-news rule: new orders refused on the REPLAY clock, closing always allowed
-- [ ] Session shading (Asia/London/NY)
+- [x] Session shading (Sydney/Tokyo/London/New York), DST-correct per city, off by
+      default, painted behind candles and never persisted
+- [x] Per-session journal statistics (by OPEN time, overlap attributed to London only,
+      counts asserted to sum to the total)
+- [ ] Session-based trading filter (sessions are drawn and reported, not enforced)
+- [ ] Killzones (ICT sub-windows)
 
 ## Phase 7 — Pine Script
 - [x] Lexer, indentation-aware parser, AST

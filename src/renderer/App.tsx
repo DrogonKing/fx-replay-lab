@@ -43,9 +43,13 @@ import {
 } from "../core/position-manage.js";
 import { TradePanel } from "./panels/TradePanel.js";
 import { NewsPanel } from "./panels/NewsPanel.js";
+import { SessionsPanel } from "./panels/SessionsPanel.js";
 import { newsMarkers, type CalendarEvent } from "../core/news.js";
 import { useI18n } from "./i18n-context.js";
 import { LOCALES } from "../core/i18n.js";
+import {
+  sessionSpans, sessionLabel, sessionOpenFor, sessionDef, type SessionName,
+} from "../core/sessions.js";
 import { DataPanel } from "./panels/DataPanel.js";
 import { StrategyPanel } from "./panels/StrategyPanel.js";
 import { JournalPanel } from "./panels/JournalPanel.js";
@@ -54,7 +58,15 @@ import type { Feed, FeedStatus } from "../core/feed.js";
 import type { CandleSeries, Timeframe } from "../core/types.js";
 
 type IndicatorKind = "SMA" | "EMA" | "BB" | "RSI" | "ADX" | "CCI" | "VWAP" | "SUPERTREND";
-type RailTab = "data" | "trade" | "news" | "indicators" | "strategy" | "journal";
+type RailTab =
+  | "data" | "trade" | "news" | "sessions" | "indicators" | "strategy" | "journal";
+
+const SESSION_LABELS: Record<SessionName, string> = {
+  sydney: sessionLabel("sydney"),
+  tokyo: sessionLabel("tokyo"),
+  london: sessionLabel("london"),
+  newyork: sessionLabel("newyork"),
+};
 
 interface IndicatorState {
   id: number;
@@ -93,6 +105,17 @@ export function App(): JSX.Element {
   const [status, setStatus] = useState<string>("");
   const [rail, setRail] = useState<RailTab>("data");
   const { lang, setLang, t } = useI18n();
+
+  /** Journal entries mirrored for the session breakdown. */
+  const [journalEntries, setJournalEntries] = useState<Array<{
+    entryTime: number; pnl: number; symbol: string;
+  }>>([]);
+
+  /** Session shading: off by default, because not every trader wants four washes. */
+  const [showSessions, setShowSessions] = useState(false);
+  const [activeSessions, setActiveSessions] = useState<
+    Array<"sydney" | "tokyo" | "london" | "newyork">
+  >(["london", "newyork"]);
 
   /**
    * Time of the newest revealed bar, in epoch seconds.
@@ -453,6 +476,20 @@ export function App(): JSX.Element {
       setLevel: (id: number, kind: "sl" | "tp", price: number) =>
         session.setLevel(id, kind, price),
       setBreakEven: (r: number) => session.setBreakEvenTrigger(r),
+      setJournalEntries: (rows: unknown[]) =>
+        (window as unknown as { __fxlabSetJournal?: (r: unknown[]) => void })
+          .__fxlabSetJournal?.(rows),
+      sessionOpenSample: () => {
+        // Sample the London open in January and July so a smoke test can prove the band
+        // follows DST without importing the module by path.
+        const jan = sessionOpenFor(Date.UTC(2024, 0, 15, 12) / 1000, sessionDef("london"));
+        const jul = sessionOpenFor(Date.UTC(2024, 6, 15, 12) / 1000, sessionDef("london"));
+        return {
+          january: new Date(jan * 1000).toISOString(),
+          july: new Date(jul * 1000).toISOString(),
+          shiftedByOneHour: jan % 86_400 !== jul % 86_400,
+        };
+      },
       setTrailing: (m: "off" | "distance" | "extreme" | "atr", v: number) =>
         session.setTrailing(m, v),
       closePartial: (id: number, lots: number) => session.closePartial(id, lots),
@@ -480,9 +517,20 @@ export function App(): JSX.Element {
       hoverId, null,
       // live account levels: rebuilt every frame from the engine, never persisted
       session.snapshot().positions.flatMap(positionLines),
+      // session washes, only when enabled
+      showSessions
+        ? sessionSpans(view.time[0]!, view.time[view.length - 1]!, {
+            only: activeSessions,
+          }).map((s) => ({
+            from: s.from,
+            to: s.to,
+            colour: s.colour,
+            label: SESSION_LABELS[s.name],
+          }))
+        : [],
     );
     setDrawCount(drawingsRef.current.get().length);
-  }, [view, hoverId, session]);
+  }, [view, hoverId, session, showSessions, activeSessions]);
 
   useEffect(() => {
     // Must re-QUEUE, not just invalidate: invalidate() repaints the LAST QUEUED shapes,
@@ -878,9 +926,10 @@ export function App(): JSX.Element {
 
       <aside className="panel">
         <nav className="rail-tabs">
-          {(["data", "trade", "news", "indicators", "strategy", "journal"] as RailTab[]).map((tabId) => (
+          {(["data", "trade", "news", "sessions", "indicators", "strategy", "journal"] as RailTab[]).map((tabId) => (
             <button
               key={tabId}
+              data-tab={tabId}
               className={rail === tabId ? "rail-tab active" : "rail-tab"}
               onClick={() => setRail(tabId)}
             >
@@ -935,6 +984,16 @@ export function App(): JSX.Element {
           />
         )}
 
+        {rail === "sessions" && (
+          <SessionsPanel
+            show={showSessions}
+            onShow={setShowSessions}
+            active={activeSessions}
+            onActive={setActiveSessions}
+            trades={journalEntries}
+          />
+        )}
+
         {rail === "indicators" && (
           <>
             <h3>Indicators</h3>
@@ -972,7 +1031,12 @@ export function App(): JSX.Element {
           <StrategyPanel series={view} account={ACCOUNT} symbolId="XAUUSD" />
         )}
 
-        {rail === "journal" && <JournalPanel session={session} />}
+        {rail === "journal" && (
+          <JournalPanel
+            session={session}
+            onEntries={(list) => setJournalEntries([...list])}
+          />
+        )}
 
         {dragMessage && <p className="status status-warn">{dragMessage}</p>}
         {status && <p className="status">{status}</p>}

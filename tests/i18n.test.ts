@@ -33,6 +33,31 @@ describe("catalogue completeness", () => {
     }
   });
 
+  it("covers every rail tab the UI renders", () => {
+    // The bug this catches: adding a tab to App.tsx without adding `tab.<id>` renders the
+    // raw key "tab.sessions" in the UI. Catalogue completeness alone cannot see that,
+    // because the key never existed in English either.
+    const tabs = ["data", "trade", "news", "sessions", "indicators", "strategy", "journal"];
+    for (const tab of tabs) {
+      for (const lang of ALL) {
+        expect(MESSAGES[lang][`tab.${tab}`], `${lang} tab.${tab}`).toBeTruthy();
+      }
+    }
+  });
+
+  it("covers every session impact and trail mode label", () => {
+    const keys = [
+      "trade.off", "trade.trailClose", "trade.trailExtreme", "trade.trailAtr",
+      "news.high", "news.medium", "news.low",
+      "sessions.title", "sessions.showOnChart", "sessions.bySession",
+    ];
+    for (const key of keys) {
+      for (const lang of ALL) {
+        expect(MESSAGES[lang][key], `${lang} ${key}`).toBeTruthy();
+      }
+    }
+  });
+
   it("has no empty values", () => {
     for (const lang of ALL) {
       for (const [k, v] of Object.entries(MESSAGES[lang])) {

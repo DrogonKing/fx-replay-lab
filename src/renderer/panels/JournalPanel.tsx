@@ -124,6 +124,10 @@ interface JournalBridge {
 }
 
 interface Props {
+  /** reports the current entries so other panels (sessions) can aggregate them */
+  onEntries?: (entries: ReadonlyArray<{
+    entryTime: number; pnl: number; symbol: string;
+  }>) => void;
   /** when provided, closed trades arrive here automatically */
   session?: {
     takePending: () => Array<{
@@ -134,9 +138,25 @@ interface Props {
   };
 }
 
-export function JournalPanel({ session }: Props = {}): JSX.Element {
+export function JournalPanel({ session, onEntries }: Props = {}): JSX.Element {
   const { t } = useI18n();
   const [entries, setEntries] = useState<JournalEntry[]>([]);
+
+  // Test hook: lets a smoke script seed rows without going through localStorage or IPC.
+  useEffect(() => {
+    const w = window as unknown as { __fxlabSetJournal?: (rows: unknown[]) => void };
+    w.__fxlabSetJournal = (rows) => setEntries(rows as JournalEntry[]);
+  }, []);
+
+  // Report upward on every change: one effect rather than five call sites, so no mutation
+  // path can forget to notify.
+  useEffect(() => {
+    onEntries?.(entries.map((e) => ({
+      entryTime: e.entryTime,
+      pnl: e.pnl,
+      symbol: e.symbol,
+    })));
+  }, [entries, onEntries]);
   const [tagInput, setTagInput] = useState("");
   const [note, setNote] = useState("");
 

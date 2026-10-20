@@ -213,6 +213,31 @@ be copied into a broker statement or a spreadsheet and still work.
 Known gap: validation messages produced by the engine (for example "buy limit 2050 is above
 the market") are still English inside the Persian interface.
 
+### Sessions
+
+**SESSIONS** tab → **shade sessions on the chart**. Pick which of Sydney, Tokyo, London and
+New York to draw.
+
+The bands follow **each city's local clock**, so they move with daylight saving: London's
+band starts at 08:00 UTC in January and 07:00 UTC in July. That is deliberate — "London opens
+at 08:00" means London time, not a fixed UTC hour.
+
+The panel also breaks your journal down by session:
+
+| Session | Trades | Net | Win% |
+|---|---|---|---|
+| Tokyo | 1 | -50 | 0 |
+| London | 1 | +100 | 100 |
+| off-session | 1 | +25 | 100 |
+
+Grouped by the session the trade was **opened** in. A trade inside the London/New York
+overlap counts as London only, so the counts always add up to the number of trades.
+
+Note that in January the sessions cover 00:00–22:00 UTC, so the only off-session window is
+22:00–24:00 UTC — a 21:00 UTC trade is still in New York.
+
+Sessions are drawn and reported only; they do not restrict trading.
+
 ### Economic calendar
 
 **NEWS** tab → **Import CSV…**. Any export with a date, a currency, an impact and an event

@@ -53,6 +53,7 @@ export const MESSAGES: Record<Lang, Record<string, string>> = {
     "tab.data": "data",
     "tab.trade": "trade",
     "tab.news": "news",
+    "tab.sessions": "sessions",
     "tab.indicators": "indicators",
     "tab.strategy": "strategy",
     "tab.journal": "journal",
@@ -131,6 +132,13 @@ export const MESSAGES: Record<Lang, Record<string, string>> = {
     "news.medium": "medium",
     "news.low": "low",
 
+    "sessions.title": "Sessions",
+    "sessions.showOnChart": "shade sessions on the chart",
+    "sessions.hint": "Bands are drawn in each city's local time, so they shift with daylight saving. London and New York overlap in the most liquid window of the day.",
+    "sessions.bySession": "By session",
+    "sessions.attribution": "Grouped by the session the trade was OPENED in. A trade inside the London/New York overlap counts as London, so the buckets add up to the total.",
+    "sessions.noTrades": "No trades yet — the breakdown appears once the journal has entries.",
+
     "journal.title": "Journal",
     "journal.sample": "+ Sample",
     "journal.export": "⬇ Export CSV",
@@ -177,6 +185,7 @@ export const MESSAGES: Record<Lang, Record<string, string>> = {
     "tab.data": "داده",
     "tab.trade": "معامله",
     "tab.news": "اخبار",
+    "tab.sessions": "سشن‌ها",
     "tab.indicators": "اندیکاتور",
     "tab.strategy": "استراتژی",
     "tab.journal": "دفتر",
@@ -254,6 +263,13 @@ export const MESSAGES: Record<Lang, Record<string, string>> = {
     "news.high": "مهم",
     "news.medium": "متوسط",
     "news.low": "کم",
+
+    "sessions.title": "سشن‌ها",
+    "sessions.showOnChart": "سایهٔ سشن‌ها روی چارت",
+    "sessions.hint": "باندها با ساعت محلی هر شهر رسم می‌شوند، پس با تغییر ساعت تابستانی جابه‌جا می‌شوند. لندن و نیویورک در پرحجم‌ترین پنجرهٔ روز هم‌پوشانی دارند.",
+    "sessions.bySession": "بر اساس سشن",
+    "sessions.attribution": "بر اساس سشنی که معامله در آن باز شده. معاملهٔ داخل هم‌پوشانی لندن/نیویورک به لندن نسبت داده می‌شود تا جمع ستون‌ها با کل برابر بماند.",
+    "sessions.noTrades": "هنوز معامله‌ای نیست — جدول وقتی دفتر ردیف داشته باشد ظاهر می‌شود.",
 
     "journal.title": "دفتر معاملات",
     "journal.sample": "+ نمونه",

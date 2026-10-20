@@ -23,7 +23,7 @@ so "no network" is structural rather than a flag someone can forget.
 ## Verified state
 
 ```
-649 unit tests, 27 files ..................... pass
+685 unit tests, 28 files ..................... pass
 strict typecheck (noUncheckedIndexedAccess) ... clean
 offline verification ......................... PASS
 CI config validation ......................... PASS
@@ -92,6 +92,11 @@ Those backtest numbers are a **negative result for a plain EMA(9/21) crossover o
   explicit `[dir]` layout overrides actively *cancel* that mirror (measured: panel back at
   offsetLeft 1160, i.e. LTR). Numbers stay Latin and LTR in both languages, because
   `۱۹۹۱.۷۱` cannot be pasted into a broker statement. See `docs/I18N.md`.
+- **Trading sessions**: shade Sydney / Tokyo / London / New York on the chart, defined in
+  each city's **local** clock so the bands follow daylight saving (London opens 08:00 UTC in
+  January, 07:00 UTC in July). The journal is broken down by the session a trade was opened
+  in, with the London/New York overlap counted once so the buckets sum to the total. See
+  `docs/SESSIONS.md`.
 - **Journal**: entries with tags, R multiples, per-tag and per-month analytics, CSV
   export, row delete. **Closed trades are filed automatically** and tagged with the exit
   reason (`sl`, `tp`, `manual`, `stop-out`); money-at-risk is captured at entry so the R
@@ -146,6 +151,7 @@ bash scripts/position-smoke.sh     # level lines, real SL drag, break-even
 bash scripts/trailing-smoke.sh     # trail tightens, never closes early, partial close
 bash scripts/news-smoke.sh         # calendar import, persist, blackout refuses an order
 bash scripts/i18n-smoke.sh         # Persian switch, RTL mirror, Latin digits, reload
+bash scripts/sessions-smoke.sh     # session bands paint, DST shift, attribution adds up
 ```
 
 ## Docs

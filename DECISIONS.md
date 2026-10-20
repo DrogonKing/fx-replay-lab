@@ -674,3 +674,52 @@ answer and are not done yet; the docs say so rather than the UI pretending other
 داده/معامله/اخبار/اندیکاتور/استراتژی/دفتر, `panelLeft 0 < chartLeft 280`, `railLeft 1396`,
 `asciiDigits true / persianDigits false`, and the choice survives `location.reload()`.
 649 tests across 27 files.
+
+
+---
+
+## ADR-017: Sessions are defined in each city's local clock, never as UTC windows
+
+**Decision.** A session's hours are its city's local hours, converted through the timezone
+module per bar. No fixed UTC boundary anywhere.
+
+**Why.** "London opens at 08:00" is a statement about London's clock. London is UTC+0 in
+winter and UTC+1 in summer, and New York changes on a different Sunday, so a hardcoded UTC
+window is wrong for roughly eight months of the year — and wrong in a way that looks fine in
+a January backtest and quietly misattributes every London trade from April onwards.
+
+**The awkward week.** The UK switches on the last Sunday of March and the US on the second,
+so between them the London/New York gap is 4 hours instead of 5. Both opens are still 08:00
+local: on 20 March 2024 that is 08:00 and 12:00 UTC, not 08:00 and 13:00. This is asserted in
+the tests, because it is exactly the window a fixed-offset implementation gets wrong.
+
+**Sydney spans midnight.** A bar at 03:00 Sydney belongs to the session that opened at 22:00
+*yesterday*. The open is searched backwards until the local hour is at or past the opening
+hour, otherwise every Sydney trade in the small hours would be attributed to a session
+starting 19 hours later.
+
+**Offsets are resolved iteratively.** `localToUtc` converts, re-reads the offset at the
+result, and repeats up to three times. Near a DST boundary the offset at the naive guess
+differs from the offset at the true instant, and a single pass lands an hour off — the same
+class of bug already fixed in `timezone.ts`.
+
+**Attribution:** open time, not close time, and the London/New York overlap counts as
+**London only**. The overlap is a property of the pair; counting it as both would make the
+session buckets sum to more than the number of trades. `sessionAtAll()` exists for the cases
+that genuinely need both names. The sessions panel asserts the counts sum to the total.
+
+**Bands are painted first**, at alpha 0.07, before candles and drawings. They are chart
+context, not annotations, so they live in their own overlay field and can never be persisted
+to SQLite by accident. Labels are skipped below 40px width: several narrow labelled bands
+are unreadable.
+
+**A gap in the UI wiring, caught by the smoke test.** Adding the `sessions` tab to
+`App.tsx` without adding `tab.sessions` to the catalogue rendered the raw string
+`tab.sessions` in the rail. Catalogue completeness tests could not see it — the key never
+existed in English either. A second test now asserts that every tab id the UI renders has a
+label in every language.
+
+**Evidence.** `scripts/sessions-smoke.sh`: four sessions with local hours and colours,
+`4034 -> 400981` overlay pixels when shading is enabled, `January 08:00 / July 07:00 UTC
+shiftedByOneHour true`, Tokyo 1/-50 · London 1/+100 · off-session 1/+25, `sum 3, netSum 75,
+noDoubleCounting true`. 685 tests across 28 files.
