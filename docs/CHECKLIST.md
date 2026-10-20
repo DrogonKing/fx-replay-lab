@@ -18,6 +18,7 @@ bash scripts/draw-smoke.sh            # real pointer events paint, undo repaints
 bash scripts/persist-smoke.sh         # drawings survive kill -9 + relaunch
 bash scripts/journal-smoke.sh         # journal survives kill -9 + relaunch
 bash scripts/trade-smoke.sh           # trade -> SL -> journal entry, end to end
+bash scripts/orders-smoke.sh          # limit fills, invalid side refused, OCO pair
 bash scripts/screenshot.sh /tmp/a.png # capture the UI
 ```
 
@@ -86,7 +87,10 @@ BAD PINE: "unsupported ta.notReal() (bar 0)"  ← precise, not silent
 - [x] Stop-out at zero equity, trading halted
 - [x] Floating P/L, equity, used margin
 - [x] Hotkeys Space / → / Ctrl+Z
-- [ ] Order types: limit, stop, stop-limit, OCO, break-even
+- [x] Order types: limit, stop, stop-limit, OCO brackets — with gap handling,
+      side validation, per-order cancel and cancel-all
+- [x] Stop-limit arms at the trigger price (not the bar open), stays armed on a gap
+- [ ] Break-even automation (move SL to entry at +1R)
 - [ ] Swap accrual, slippage, margin call threshold
 - [x] Positions table UI with per-row close and close-all
 - [x] Margin check: an order that cannot be funded is refused with the numbers

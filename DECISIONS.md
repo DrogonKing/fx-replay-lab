@@ -412,3 +412,55 @@ When a previous `electron` survived a `kill -9` of its `xvfb-run` wrapper, the n
 attached to the **stale** app: the log said `Cannot start http server for devtools`, and
 every assertion measured the old bundle while looking perfectly healthy. The scripts now
 `pkill` leftovers and pick a random free port.
+
+
+---
+
+## ADR-012: Pending orders are matched in core, evaluated before SL/TP, and OCO is checked in-loop
+
+**Decision.** Limit/stop/stop-limit matching lives in `src/core/orders.ts` as pure
+functions over a bar, not inside `AccountEngine`. The session calls `processBar()`
+first on each bar, opens positions for whatever filled, and only then runs
+`engine.onBar()` for stops and targets.
+
+**Why separate from the engine.** The engine's job is money: balance, margin, realised
+P/L, one rule per fill. Order matching is a different rule set (four directions, gap
+semantics, arming) and it is the set most likely to be subtly wrong. Keeping it pure and
+separate means each trigger direction can be asserted in isolation; a limit that fills
+when it should not is a silent backtest lie, and silent lies are what tests exist for.
+
+**Why before SL/TP.** A limit that fills on bar N is a position that existed during bar
+N, so its stop must be testable on bar N. Running the engine first would grant every
+entry one bar of protection it never had, and that shows up as an impossible
+improvement in any strategy that uses stops.
+
+**Three real bugs this produced, all caught by tests rather than by reading the code:**
+
+1. **Stop-limit filled at the wrong price.** On a same-bar trigger the limit leg was
+   checked with `limitFill()`, which asks "did price come down to the limit?". For a
+   *buy* stop-limit the limit sits *above* the market while price rises through it, so
+   `limitFill` read the bar's open as a favourable gap and filled 35 points below the
+   stop. The correct rule: a stop-limit becomes a live limit at the **trigger price**,
+   accepted only if that price satisfies the limit; otherwise it stays armed.
+2. **OCO filled both legs.** Sibling cancellation ran after the fill loop, so a single
+   bar spanning both levels filled both orders and opened two opposing positions — the
+   exact opposite of one-cancels-the-other. The check now happens inside the loop, with
+   a set of groups that have already fired.
+3. **`reset()` kept the order book.** "New session" left stale pending orders that
+   would fire against the fresh account as soon as replay resumed.
+
+**Refusing instant fills.** A buy limit above the market, a sell limit below it, a buy
+stop below it, a sell stop above it — all would fill at once and are refused with both
+prices in the message. Silently converting them to market orders would take a decision
+the user did not make.
+
+**Evidence.** `tests/orders.test.ts` (37) covers all four directions for both order
+kinds, gap semantics both ways, arming, OCO, and validation. `tests/orders-session.test.ts`
+(20) covers the session integration including `filled === 1` for a two-level OCO bar.
+`scripts/orders-smoke.sh` drives the real UI: places a buy limit below market, gets the
+refusal above market with the exact message, steps 60 bars until the fill
+(`buy 0.1 @ 1990.71`, floating +71.20), and places an OCO pair (`buy limit 1990` +
+`sell stop 1980`, both tagged `waiting · OCO`).
+
+**Not done, and stated in the docs:** no partial fills, no order expiry (day/GTC), no
+variable spread. Real books fill across levels; this fills whole or not at all.

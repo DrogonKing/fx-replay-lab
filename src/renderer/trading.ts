@@ -15,6 +15,10 @@ import type { Candle, Account, SymbolSpec, Side, Position, Trade } from "../core
 import { findSymbol } from "../core/symbol.js";
 import type { JournalEntry } from "../core/persist.js";
 import { tradeToJournalEntry, mergeNewEntries } from "../core/trade-to-journal.js";
+import {
+  processBar, validateOrder, describeOrder,
+  type PendingOrder, type PendingKind, type Bar,
+} from "../core/orders.js";
 
 export interface SessionSnapshot {
   balance: number;
@@ -26,6 +30,18 @@ export interface SessionSnapshot {
   stoppedOut: boolean;
   /** every trade closed in this session, newest last */
   trades: Trade[];
+  /** limit/stop/stop-limit orders waiting for a trigger */
+  pendingOrders: PendingOrder[];
+  /** orders that filled or were cancelled, newest last */
+  orderHistory: PendingOrder[];
+}
+
+export interface PlaceOrderResult {
+  ok: boolean;
+  message?: string;
+  order?: PendingOrder;
+  /** set when an OCO pair was created */
+  sibling?: PendingOrder;
 }
 
 export type SessionListener = (s: SessionSnapshot) => void;
@@ -53,6 +69,11 @@ export class TradingSession {
 
   /** entries produced but not yet consumed by the journal panel */
   private pending: JournalEntry[] = [];
+
+  /** live pending orders, evaluated once per bar */
+  private orders: PendingOrder[] = [];
+  private orderHistory: PendingOrder[] = [];
+  private orderSeq = 0;
 
   constructor(symbolId: string, account: Account = DEFAULT_ACCOUNT) {
     this.symbolId = symbolId;
@@ -96,6 +117,8 @@ export class TradingSession {
       positions: [...this.engine.positions],
       stoppedOut: this.engine.stoppedOut,
       trades: [...this.engine.trades],
+      pendingOrders: [...this.orders],
+      orderHistory: [...this.orderHistory],
     };
   }
 
@@ -168,6 +191,109 @@ export class TradingSession {
     return true;
   }
 
+  // ------------------------------------------------------------- orders
+
+  /**
+   * Place a pending order.
+   *
+   * Validation happens here rather than in the UI so the same rules apply whatever
+   * calls it, and a limit on the wrong side of the market is refused instead of
+   * silently becoming an instant fill.
+   */
+  placeOrder(req: {
+    side: Side;
+    kind: PendingKind;
+    lots: number;
+    price: number;
+    limitPrice?: number;
+    slDistance: number;
+    tpDistance: number;
+    tags?: string[];
+    /** join this OCO group instead of creating one */
+    ocoGroup?: string;
+    /** create an OCO pair: this order plus a sibling on the other side */
+    ocoWith?: { side: Side; kind: PendingKind; price: number };
+  }): PlaceOrderResult {
+    if (this.price <= 0) return { ok: false, message: "no price yet" };
+
+    const err = validateOrder(
+      {
+        side: req.side, kind: req.kind, lots: req.lots,
+        price: req.price, limitPrice: req.limitPrice,
+      },
+      this.price,
+      { minLot: this.spec.lotMin, maxLot: this.spec.lotMax },
+    );
+    if (err) return { ok: false, message: err };
+
+    const group = req.ocoWith ? `oco_${++this.orderSeq}` : req.ocoGroup;
+
+    const make = (o: {
+      side: Side; kind: PendingKind; price: number; limitPrice?: number;
+    }): PendingOrder => ({
+      id: `ord_${Date.now()}_${++this.orderSeq}`,
+      side: o.side,
+      kind: o.kind,
+      lots: req.lots,
+      price: o.price,
+      limitPrice: o.limitPrice,
+      slDistance: req.slDistance,
+      tpDistance: req.tpDistance,
+      createdAt: this.time,
+      ocoGroup: group,
+      status: "pending",
+      tags: req.tags ?? [],
+    });
+
+    const main = make({
+      side: req.side, kind: req.kind, price: req.price, limitPrice: req.limitPrice,
+    });
+
+    if (req.ocoWith) {
+      const siblingErr = validateOrder(
+        {
+          side: req.ocoWith.side, kind: req.ocoWith.kind,
+          lots: req.lots, price: req.ocoWith.price,
+        },
+        this.price,
+        { minLot: this.spec.lotMin, maxLot: this.spec.lotMax },
+      );
+      if (siblingErr) return { ok: false, message: `OCO sibling: ${siblingErr}` };
+      const sibling = make({
+        side: req.ocoWith.side, kind: req.ocoWith.kind, price: req.ocoWith.price,
+      });
+      this.orders.push(main, sibling);
+      this.emit();
+      return {
+        ok: true, order: main, sibling,
+        message: `OCO pair placed (group ${group})`,
+      };
+    }
+
+    this.orders.push(main);
+    this.emit();
+    return { ok: true, order: main };
+  }
+
+  cancelOrder(id: string): boolean {
+    const idx = this.orders.findIndex((o) => o.id === id);
+    if (idx < 0) return false;
+    const [o] = this.orders.splice(idx, 1);
+    this.orderHistory.push({ ...o!, status: "cancelled", cancelReason: "user" });
+    this.emit();
+    return true;
+  }
+
+  cancelAllOrders(): number {
+    const n = this.orders.length;
+    for (const o of this.orders) {
+      this.orderHistory.push({ ...o, status: "cancelled", cancelReason: "user" });
+    }
+    this.orders = [];
+    if (n > 0) this.emit();
+    return n;
+  }
+
   /**
    * Advance the engine one bar so SL/TP and trailing stops fire.
    *
@@ -178,10 +304,53 @@ export class TradingSession {
   onBar(bar: Candle): Trade[] {
     this.price = bar.close;
     this.time = bar.time;
+
+    // Pending orders are evaluated BEFORE the engine's SL/TP pass. A limit that
+    // fills on this bar is a position that existed for (part of) this bar, so its
+    // stop must be testable on the same bar rather than a bar later — otherwise
+    // every entry gets a free bar of protection it did not have.
+    this.processOrders(bar as Bar);
+
     const closed = this.engine.onBar(bar);
     if (closed.length > 0) this.fileTrades(closed);
     this.emit();
     return closed;
+  }
+
+  /** Match the book against a bar and open positions for whatever filled. */
+  private processOrders(bar: Bar): void {
+    if (this.orders.length === 0) return;
+
+    const r = processBar(this.orders, bar);
+
+    for (const o of [...r.filled, ...r.cancelled]) {
+      this.orderHistory.push(o);
+    }
+    this.orders = r.remaining;
+
+    for (const fill of r.fills) {
+      const o = fill.order;
+      // The engine prices from the current BID and applies the spread itself, so
+      // convert the fill price back to a bid-equivalent: a buy fills at ask, so its
+      // bid equivalent is price - spread.
+      const bidEquivalent = o.side === "buy"
+        ? fill.price - this.engine.spread
+        : fill.price;
+
+      const pos = this.engine.open({
+        side: o.side,
+        lots: o.lots,
+        slDistance: o.slDistance,
+        tpDistance: o.tpDistance,
+        price: bidEquivalent,
+        time: bar.time,
+      });
+      if (!pos) continue;
+
+      if (o.slDistance > 0) this.initialRisk.set(pos.id, o.slDistance);
+      const tags = [...(o.tags ?? []), `${o.kind}-fill`];
+      if (tags.length > 0) this.positionTags.set(pos.id, tags);
+    }
   }
 
   private fileTrades(trades: readonly Trade[]): void {
@@ -219,12 +388,16 @@ export class TradingSession {
     return out;
   }
 
-  /** Reset the account and history. Used by "new session". */
+  /** Reset the account, the order book and all history. Used by "new session". */
   reset(account: Account = DEFAULT_ACCOUNT): void {
     this.engine = new AccountEngine({ account, symbol: this.spec });
     this.initialRisk.clear();
     this.positionTags.clear();
     this.pending = [];
+    // The order book must go too: a stale limit left over from the previous session
+    // would fire against the fresh account the moment replay resumes.
+    this.orders = [];
+    this.orderHistory = [];
     this.emit();
   }
 }

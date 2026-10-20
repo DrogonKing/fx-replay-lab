@@ -30,6 +30,10 @@ export function TradePanel({
   const [tpPts, setTpPts] = useState("20");
   const [tags, setTags] = useState("");
   const [msg, setMsg] = useState("");
+  const [kind, setKind] = useState<"market" | "limit" | "stop" | "stop-limit">("market");
+  const [triggerPrice, setTriggerPrice] = useState("");
+  const [limitPrice, setLimitPrice] = useState("");
+  const [oco, setOco] = useState(false);
 
   useEffect(() => session.subscribe(setSnap), [session]);
 
@@ -57,8 +61,43 @@ export function TradePanel({
       return;
     }
     const tagList = tags.split(",").map((t) => t.trim()).filter(Boolean);
-    const r = session.open(side, lotsNum, slNum || 0, tpNum || 0, tagList);
-    setMsg(r.ok ? `${side} ${lotsNum} opened` : (r.message ?? "refused"));
+
+    // market: fill now. everything else goes on the book.
+    if (kind === "market") {
+      const r = session.open(side, lotsNum, slNum || 0, tpNum || 0, tagList);
+      setMsg(r.ok ? `${side} ${lotsNum} opened` : (r.message ?? "refused"));
+      return;
+    }
+
+    const trig = Number(triggerPrice);
+    if (!Number.isFinite(trig) || trig <= 0) {
+      setMsg("enter a valid trigger price");
+      return;
+    }
+    const lim = Number(limitPrice);
+
+    const r = session.placeOrder({
+      side,
+      kind: kind === "stop-limit" ? "stop-limit" : kind,
+      lots: lotsNum,
+      price: trig,
+      limitPrice: kind === "stop-limit" && Number.isFinite(lim) ? lim : undefined,
+      slDistance: slNum || 0,
+      tpDistance: tpNum || 0,
+      tags: tagList,
+      // OCO on a pending order pairs it with a stop on the other side, which is the
+      // common breakout/breakdown bracket.
+      ocoWith: oco
+        ? {
+            side: side === "buy" ? "sell" : "buy",
+            kind: "stop",
+            price: side === "buy"
+              ? Math.round((trig - Math.max(1, slNum || 10)) * 100) / 100
+              : Math.round((trig + Math.max(1, slNum || 10)) * 100) / 100,
+          }
+        : undefined,
+    });
+    setMsg(r.ok ? (r.message ?? `${side} ${kind} placed`) : (r.message ?? "refused"));
   };
 
   return (
@@ -92,6 +131,18 @@ export function TradePanel({
 
       <div className="order-form">
         <label>
+          type
+          <select
+            value={kind}
+            onChange={(e) => setKind(e.target.value as typeof kind)}
+          >
+            <option value="market">market</option>
+            <option value="limit">limit</option>
+            <option value="stop">stop</option>
+            <option value="stop-limit">stop-limit</option>
+          </select>
+        </label>
+        <label>
           lots
           <input
             value={lots}
@@ -115,6 +166,38 @@ export function TradePanel({
             placeholder="breakout, ny"
           />
         </label>
+        {kind !== "market" && (
+          <>
+            <label>
+              trigger
+              <input
+                value={triggerPrice}
+                onChange={(e) => setTriggerPrice(e.target.value)}
+                placeholder={price.toFixed(2)}
+                inputMode="decimal"
+              />
+            </label>
+            {kind === "stop-limit" && (
+              <label>
+                limit
+                <input
+                  value={limitPrice}
+                  onChange={(e) => setLimitPrice(e.target.value)}
+                  placeholder={price.toFixed(2)}
+                  inputMode="decimal"
+                />
+              </label>
+            )}
+            <label className="checkbox-row">
+              <input
+                type="checkbox"
+                checked={oco}
+                onChange={(e) => setOco(e.target.checked)}
+              />
+              OCO bracket
+            </label>
+          </>
+        )}
       </div>
 
       <div className="kv">
@@ -145,6 +228,44 @@ export function TradePanel({
       </div>
 
       {msg && <p className="msg">{msg}</p>}
+
+      {snap.pendingOrders.length > 0 && (
+        <>
+          <h3>Pending ({snap.pendingOrders.length})</h3>
+          <table className="grid">
+            <thead>
+              <tr><th>order</th><th>price</th><th>status</th><th /></tr>
+            </thead>
+            <tbody>
+              {snap.pendingOrders.map((o) => (
+                <tr key={o.id}>
+                  <td className={o.side === "buy" ? "up" : "down"}>
+                    {o.side} {o.kind}
+                  </td>
+                  <td>
+                    {o.price.toFixed(2)}
+                    {o.limitPrice !== undefined && ` / ${o.limitPrice.toFixed(2)}`}
+                  </td>
+                  <td>
+                    {o.triggered ? "armed" : "waiting"}
+                    {o.ocoGroup && " · OCO"}
+                  </td>
+                  <td>
+                    <button
+                      className="row-del"
+                      onClick={() => session.cancelOrder(o.id)}
+                      title="Cancel this order"
+                    >
+                      ✕
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <button onClick={() => session.cancelAllOrders()}>Cancel all orders</button>
+        </>
+      )}
 
       {snap.positions.length > 0 && (
         <>
@@ -182,6 +303,16 @@ export function TradePanel({
             Close all
           </button>
         </>
+      )}
+
+      {snap.orderHistory.length > 0 && (
+        <p className="msg">
+          Orders so far: {snap.orderHistory.filter((o) => o.status === "filled").length} filled,{" "}
+          {snap.orderHistory.filter((o) => o.status === "cancelled").length} cancelled
+          {snap.orderHistory.some((o) => o.cancelReason?.includes("OCO"))
+            ? " (OCO cancelled the sibling)"
+            : ""}
+        </p>
       )}
 
       {snap.trades.length > 0 && (

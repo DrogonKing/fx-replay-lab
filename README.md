@@ -23,7 +23,7 @@ so "no network" is structural rather than a flag someone can forget.
 ## Verified state
 
 ```
-410 unit tests, 19 files ..................... pass
+467 unit tests, 21 files ..................... pass
 strict typecheck (noUncheckedIndexedAccess) ... clean
 offline verification ......................... PASS
 CI config validation ......................... PASS
@@ -65,6 +65,10 @@ Those backtest numbers are a **negative result for a plain EMA(9/21) crossover o
   margin check, open-positions table with per-row close, live equity and floating P/L,
   stop-out halt. Runs on the same `AccountEngine` as the backtester, so a strategy that
   shows a profit and a hand-placed trade are priced identically.
+- **Order types**: market, limit, stop and stop-limit, plus OCO brackets. Gaps are
+  honoured in both directions (a stop gaps *worse*, a limit gaps *better*), an order
+  that would fill instantly is refused rather than silently converted, and a stop-limit
+  arms at its trigger price. See `docs/ORDER-TYPES.md`.
 - **Journal**: entries with tags, R multiples, per-tag and per-month analytics, CSV
   export, row delete. **Closed trades are filed automatically** and tagged with the exit
   reason (`sl`, `tp`, `manual`, `stop-out`); money-at-risk is captured at entry so the R
@@ -80,8 +84,10 @@ Those backtest numbers are a **negative result for a plain EMA(9/21) crossover o
 
 Stated plainly, because a checklist that hides gaps is worse than no checklist:
 
-- Order types beyond market (limit/stop/OCO), swap accrual, margin-call **threshold**
+- Swap accrual (computed per trade but no daily rollover) and margin-call **threshold**
   (stop-out at zero equity works; a broker-style margin call warning does not).
+- **No partial fills** and no order expiry (day/GTC); an order lives until it fills or
+  is cancelled.
 - News calendar, session shading.
 - Pine: no `request.security`, no `label`/`line`/`box`, no tuple destructuring, no
   `import`.

@@ -93,6 +93,31 @@ Indicators: SMA, EMA, Bollinger, RSI, ADX, CCI, VWAP, Supertrend.
 
 ## Trading by hand
 
+### Order types
+
+| Type | Use it when | Refused if |
+|---|---|---|
+| **market** | you want in/out now | — |
+| **limit** | you want a better price than the market | a buy limit is above the market (it would fill instantly) |
+| **stop** | you want confirmation of a break | a buy stop is below the market |
+| **stop-limit** | you want the break but refuse a bad price | the limit is on the wrong side of the stop |
+
+Enter a **trigger** price for limit/stop, and a **limit** price too for stop-limit. Tick
+**OCO bracket** to place the order together with a stop on the opposite side at your SL
+distance — one cancels the other, which is the usual breakout/breakdown setup.
+
+An order that would fill immediately is refused with both prices in the message rather
+than quietly becoming a market order:
+
+```
+buy limit 2050 is above the market (1991.71) — it would fill immediately;
+use a market order or a lower limit
+```
+
+Full rules, gap behaviour and the limits of the implementation:
+`docs/ORDER-TYPES.md`.
+
+
 The **TRADE** tab places market orders on the same account the backtester uses.
 
 | Field | Meaning |
