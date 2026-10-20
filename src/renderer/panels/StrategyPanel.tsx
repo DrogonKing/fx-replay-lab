@@ -12,6 +12,7 @@ import type { BacktestResult } from "../../core/backtest.js";
 import type {
   OptimizationResult, WalkForwardResult, MonteCarloResult,
 } from "../../core/optimize.js";
+import { OptimizerHeatmap } from "./OptimizerHeatmap.js";
 import type { RunResult } from "../../core/pine/runtime.js";
 import type { Account, CandleSeries } from "../../core/types.js";
 
@@ -98,10 +99,19 @@ export function StrategyPanel({ series, account, symbolId }: Props): JSX.Element
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
 
+  /**
+   * Strategy parameters.
+   *
+   * Was hardcoded to `{}`, so there was no way to run a backtest with a chosen parameter set
+   * — which made "apply the best parameters" impossible and the optimizer's output
+   * unactionable.
+   */
+  const [params, setParams] = useState<Record<string, number>>({});
+
   const req = (): unknown => ({
     series: payload(series),
     code,
-    params: {},
+    params,
     account,
     symbol: symbolId,
   });
@@ -253,6 +263,16 @@ export function StrategyPanel({ series, account, symbolId }: Props): JSX.Element
 
       {tab === "optimize" && opt && (
         <div className="scroll">
+          <OptimizerHeatmap
+            result={opt}
+            onApply={(params) => {
+              // Applying a parameter set only fills the fields: the user still presses RUN.
+              // Silently re-running would replace the result they are looking at.
+              setParams(params);
+              setMsg(`applied ${Object.entries(params).map(([k, v]) => `${k}=${v}`).join(" ")} — press Run`);
+            }}
+          />
+
           <table className="grid">
             <thead><tr><th>#</th><th>params</th><th>net</th><th>PF</th><th>win%</th><th>DD%</th></tr></thead>
             <tbody>

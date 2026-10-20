@@ -132,6 +132,153 @@
   color: #5d606b;
 }
 
+/* ================= journal R calendar ================= */
+.cal-head {
+  align-items: center;
+  display: flex;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.cal-head b {
+  color: #d1d4dc;
+  flex: 1;
+  font-size: 11px;
+  text-align: center;
+}
+
+.cal-grid {
+  border-collapse: separate;
+  border-spacing: 2px;
+  font-size: 9px;
+  width: 100%;
+}
+
+.cal-grid th {
+  color: #787b86;
+  font-size: 8px;
+  font-weight: 500;
+  padding-bottom: 2px;
+}
+
+.cal-day {
+  border-radius: 2px;
+  height: 26px;
+  position: relative;
+  text-align: center;
+  vertical-align: top;
+  width: 13%;
+}
+
+/* A day with no trades is dimmed, so a zero-R day does not read as a scratch result. */
+.cal-day.cal-idle {
+  opacity: 0.45;
+}
+
+.cal-out {
+  background: transparent;
+}
+
+.cal-num {
+  color: #787b86;
+  display: block;
+  font-size: 8px;
+  line-height: 1;
+  padding-top: 2px;
+}
+
+.cal-r {
+  color: #e8eaed;
+  display: block;
+  font-family: ui-monospace, monospace;
+  font-size: 9px;
+  font-weight: 600;
+}
+
+.cal-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 6px 0;
+}
+
+.cal-key {
+  align-items: center;
+  color: #787b86;
+  display: flex;
+  font-size: 8px;
+  gap: 3px;
+}
+
+.cal-key i {
+  border-radius: 2px;
+  display: inline-block;
+  height: 8px;
+  width: 8px;
+}
+
+/* ================= optimizer heatmap ================= */
+.heat-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.heat-controls label {
+  color: #787b86;
+  display: flex;
+  flex-direction: column;
+  font-size: 9px;
+  gap: 2px;
+}
+
+.heat-controls select {
+  background: #1e222d;
+  border: 1px solid #363a45;
+  border-radius: 3px;
+  color: #d1d4dc;
+  font-size: 10px;
+  padding: 2px 3px;
+}
+
+.heat-grid {
+  border-collapse: collapse;
+  font-family: ui-monospace, monospace;
+  font-size: 9px;
+  margin-bottom: 8px;
+}
+
+.heat-grid th {
+  color: #787b86;
+  font-weight: 500;
+  padding: 2px 4px;
+}
+
+.heat-grid td {
+  border: 1px solid #131722;
+  color: #e8eaed;
+  min-width: 34px;
+  padding: 3px 4px;
+  text-align: center;
+}
+
+/* The winner is outlined, not recoloured: the fill already encodes the value, and a second
+   colour would fight it. */
+.heat-grid td.heat-best {
+  outline: 2px solid #f0b90b;
+  outline-offset: -2px;
+}
+
+.heat-corner {
+  font-size: 8px;
+  max-width: 60px;
+}
+
+.heat-rowhead {
+  text-align: right;
+}
+
 /* ================= csv column mapping ================= */
 .colmap h4,
 .quality h4 {

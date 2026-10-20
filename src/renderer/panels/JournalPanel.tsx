@@ -13,22 +13,12 @@ import {
 } from "../../core/persist.js";
 import { mergeNewEntries } from "../../core/trade-to-journal.js";
 import { useI18n } from "../i18n-context.js";
+import type { JournalEntry } from "../../core/journal-calendar.js";
+import { JournalCalendar } from "./JournalCalendar.js";
 
-export interface JournalEntry {
-  id: string;
-  symbol: string;
-  side: "buy" | "sell";
-  lots: number;
-  entryTime: number;
-  exitTime: number;
-  entryPrice: number;
-  exitPrice: number;
-  pnl: number;
-  /** initial risk in money, used for the R multiple */
-  risk: number;
-  tags: string[];
-  notes: string;
-}
+// The shape lives in core (a renderer import from core would break the jsx boundary and the
+// spec's "core has no DOM" rule). Re-exported so existing imports keep working.
+export type { JournalEntry };
 
 export interface JournalStats {
   count: number;
@@ -293,6 +283,8 @@ export function JournalPanel({ session, onEntries }: Props = {}): JSX.Element {
       </div>
 
       {note && <p className="status status-warn" data-note="journal">{note}</p>}
+
+      <JournalCalendar entries={entries} />
 
       {stats.count === 0 && <p className="msg">{t("journal.empty")}</p>}
 
