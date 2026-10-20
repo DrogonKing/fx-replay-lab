@@ -51,6 +51,15 @@ const api = {
   saveJournal: (entries: unknown[]): Promise<{ ok: boolean }> =>
     ipcRenderer.invoke("db:saveJournal", entries),
 
+  /** Live trading session for a workspace: raw JSON text, parsed by the renderer once. */
+  loadLiveSession: (workspace: string): Promise<{
+    raw: string | null; updatedAt: number | null;
+  }> => ipcRenderer.invoke("db:loadLiveSession", workspace),
+  saveLiveSession: (workspace: string, state: unknown): Promise<{ ok: boolean }> =>
+    ipcRenderer.invoke("db:saveLiveSession", workspace, state),
+  clearLiveSession: (workspace: string): Promise<{ ok: boolean }> =>
+    ipcRenderer.invoke("db:clearLiveSession", workspace),
+
   /** Persist an economic calendar snapshot (replaces the previous one). */
   saveNews: (events: unknown[]): Promise<number> =>
     ipcRenderer.invoke("db:saveNews", events),

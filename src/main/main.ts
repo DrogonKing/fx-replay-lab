@@ -85,6 +85,17 @@ function createWindow(): BrowserWindow {
 
 app.whenReady().then(() => {
   db = openDatabase(path.join(dataDir(), "fx-replay-lab.db"));
+  ipcMain.handle("db:loadLiveSession", (_e, workspace: string) =>
+    db?.loadLiveSession(workspace) ?? { raw: null, updatedAt: null });
+  ipcMain.handle("db:saveLiveSession", (_e, workspace: string, state: unknown) => {
+    db?.saveLiveSession(workspace, state);
+    return { ok: true };
+  });
+  ipcMain.handle("db:clearLiveSession", (_e, workspace: string) => {
+    db?.clearLiveSession(workspace);
+    return { ok: true };
+  });
+
   ipcMain.handle("db:saveNews", (_e, events: unknown) => {
     // `db` is assigned in whenReady; the handler cannot fire before the window exists.
     const store = db;

@@ -213,6 +213,23 @@ be copied into a broker statement or a spreadsheet and still work.
 Known gap: validation messages produced by the engine (for example "buy limit 2050 is above
 the market") are still English inside the Persian interface.
 
+### Closing the app with a trade open
+
+Your position survives. Balance, open positions, pending orders (including OCO pairs),
+closed trades and where you were in the replay are all written as they change — not on
+shutdown.
+
+When you reopen the app a green note appears under the chart:
+
+> restored balance 9999.40 · 1 open · 1 pending  ✕
+
+Click the **✕** to discard it and start clean. A corrupt stored session is refused with the
+reason instead of being partly restored — half a session would show a balance that does not
+match its positions.
+
+A session with nothing in it (no positions, no orders, no trades, balance untouched) is not
+offered, so the note only appears when there is something to come back to.
+
 ### Sessions
 
 **SESSIONS** tab → **shade sessions on the chart**. Pick which of Sydney, Tokyo, London and

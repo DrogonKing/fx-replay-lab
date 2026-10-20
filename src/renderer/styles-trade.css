@@ -132,6 +132,26 @@
   color: #5d606b;
 }
 
+.status-info {
+  color: #4f9d69;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.status-dismiss {
+  background: transparent;
+  border: 1px solid #363a45;
+  border-radius: 3px;
+  color: #787b86;
+  cursor: pointer;
+  font-size: 10px;
+  line-height: 1;
+  padding: 2px 5px;
+}
+
+.status-dismiss:hover { color: #ef5350; border-color: #ef535088; }
+
 /* ================= sessions panel ================= */
 
 .sessions-panel { padding: 8px 10px; }

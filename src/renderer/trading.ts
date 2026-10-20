@@ -21,6 +21,9 @@ import {
 } from "../core/orders.js";
 import { constrainLevel, applyBreakEven } from "../core/position-manage.js";
 import { trailPrice, planPartialClose, atrSeries } from "../core/trailing.js";
+import {
+  SESSION_SCHEMA_VERSION, serialiseSessionState, type SessionState,
+} from "../core/session-state.js";
 
 export interface SessionSnapshot {
   balance: number;
@@ -84,6 +87,18 @@ export class TradingSession {
   private atr: number[] = [];
   /** index of the bar currently being processed, for ATR alignment */
   private barIndex = 0;
+  /**
+   * Last bar index a restored session was already exposed to.
+   *
+   * -1 when nothing was restored. Read once by the caller after importState(); the chart
+   * uses it to skip the bar that preceded the save.
+   */
+  private restoredThroughBar = -1;
+
+  /** Bar index the restored session was already exposed to; -1 when none. */
+  get restoredThrough(): number {
+    return this.restoredThroughBar;
+  }
   /** active news blackout, when one blocks trading */
   private blackout: { blocked: boolean; reason?: string } | null = null;
 
@@ -564,6 +579,71 @@ export class TradingSession {
   }
 
   /** Reset the account, the order book and all history. Used by "new session". */
+  /**
+   * Snapshot the live trading state so it survives a restart.
+   *
+   * `revealed` is not known here — the replay cursor belongs to the chart, not the session —
+   * so the caller fills it in.
+   */
+  exportState(workspace: string, revealed: number): SessionState {
+    return serialiseSessionState({
+      version: SESSION_SCHEMA_VERSION,
+      workspace,
+      balance: this.engine.balance,
+      stoppedOut: this.engine.stoppedOut,
+      positions: this.engine.positions.map((p) => ({ ...p })),
+      pendingOrders: this.orders.filter((o) => o.status === "pending").map((o) => ({ ...o })),
+      trades: this.engine.trades.map((t) => ({ ...t })),
+      revealed,
+      lastBarTime: this.time,
+      startingBalance: this.engine.account.startingBalance,
+      savedAt: Math.floor(Date.now() / 1000),
+    });
+  }
+
+  /**
+   * Restore a previously exported state.
+   *
+   * Rebuilds the engine rather than mutating it: a partially applied restore would leave a
+   * balance that no longer explains the positions. The caller has already parsed and
+   * validated the state (ADR-010), so this trusts its argument.
+   */
+  importState(state: SessionState): void {
+    // Remember where the replay was. The caller seeds its bar cursor from this so the bar
+    // the position was opened on is not re-processed: it already happened, and testing the
+    // restored stop against it stops the position out the instant it comes back.
+    this.restoredThroughBar = Math.max(-1, state.revealed - 1);
+    this.engine = new AccountEngine({
+      account: {
+        ...DEFAULT_ACCOUNT,
+        startingBalance: state.startingBalance,
+      },
+      symbol: this.spec,
+    });
+    this.engine.balance = state.balance;
+    this.engine.stoppedOut = state.stoppedOut;
+    this.engine.positions = state.positions.map((p) => ({ ...p }));
+    this.engine.trades = state.trades.map((t) => ({ ...t }));
+
+    this.orders = state.pendingOrders.map((o) => ({ ...o, status: "pending" as const }));
+    this.orderHistory = [];
+    this.orderSeq = this.orders.length;
+
+    // The per-position bookkeeping cannot be reconstructed exactly (the original stop
+    // distance is not in the position), so risk is re-derived from the current stop. A
+    // position with no stop keeps risk 0 — the journal already shows "—" for that.
+    this.initialRisk.clear();
+    this.positionTags.clear();
+    for (const p of this.engine.positions) {
+      const d = p.sl === null ? 0 : Math.abs(p.entryPrice - p.sl);
+      this.initialRisk.set(p.id, d);
+      this.positionTags.set(p.id, []);
+    }
+
+    this.pending = [];
+    this.emit();
+  }
+
   reset(account: Account = DEFAULT_ACCOUNT): void {
     this.engine = new AccountEngine({ account, symbol: this.spec });
     this.initialRisk.clear();
@@ -573,6 +653,7 @@ export class TradingSession {
     // would fire against the fresh account the moment replay resumes.
     this.orders = [];
     this.orderHistory = [];
+    this.restoredThroughBar = -1;
     this.emit();
   }
 }

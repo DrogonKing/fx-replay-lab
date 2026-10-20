@@ -16,6 +16,7 @@ bash scripts/live-smoke.sh            # real Yahoo fetch + real backtest via UI
 bash scripts/pine-smoke.sh            # Pine parse+evaluate through IPC
 bash scripts/draw-smoke.sh            # real pointer events paint, undo repaints
 bash scripts/persist-smoke.sh         # drawings survive kill -9 + relaunch
+bash scripts/live-session-smoke.sh    # open position survives SIGKILL, restore, dismiss
 bash scripts/journal-smoke.sh         # journal survives kill -9 + relaunch
 bash scripts/trade-smoke.sh           # trade -> SL -> journal entry, end to end
 bash scripts/orders-smoke.sh          # limit fills, invalid side refused, OCO pair
@@ -107,6 +108,11 @@ BAD PINE: "unsupported ta.notReal() (bar 0)"  ← precise, not silent
 - [x] Auto break-even at N×R, commission-aware, only ever tightens
 - [x] Trailing stop: close / high-low / ATR(14), applied after the bar (no same-bar exit)
 - [x] Partial close, refusing off-step remainders instead of rounding
+- [x] Live session persistence: balance, open positions, pending orders (with OCO
+      groups), closed trades and the replay cursor survive SIGKILL; corrupt sessions are
+      refused with a reason rather than partly applied
+- [x] Restore gate: no bar is processed until the restore settles, and the save-time bar
+      is skipped so a restored position is not stopped out on arrival
 - [x] Positions table reads P/L from the engine (one source of truth)
 - [ ] Equity curve UI
 - [ ] Risk calculator UI

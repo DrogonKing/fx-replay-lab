@@ -23,7 +23,7 @@ so "no network" is structural rather than a flag someone can forget.
 ## Verified state
 
 ```
-685 unit tests, 28 files ..................... pass
+722 unit tests, 29 files ..................... pass
 strict typecheck (noUncheckedIndexedAccess) ... clean
 offline verification ......................... PASS
 CI config validation ......................... PASS
@@ -97,6 +97,11 @@ Those backtest numbers are a **negative result for a plain EMA(9/21) crossover o
   January, 07:00 UTC in July). The journal is broken down by the session a trade was opened
   in, with the London/New York overlap counted once so the buckets sum to the total. See
   `docs/SESSIONS.md`.
+- **Live sessions survive the app closing**: balance, open positions, pending orders (OCO
+  groups included), closed trades and the replay cursor are written as they change, and a
+  SIGKILL is the test — not a graceful quit that could hide a missing save behind an exit
+  handler. A corrupt session is refused with a reason rather than partly applied. See
+  `docs/LIVE-SESSION.md`.
 - **Journal**: entries with tags, R multiples, per-tag and per-month analytics, CSV
   export, row delete. **Closed trades are filed automatically** and tagged with the exit
   reason (`sl`, `tp`, `manual`, `stop-out`); money-at-risk is captured at entry so the R
@@ -144,6 +149,7 @@ bash scripts/live-smoke.sh         # real network + real backtest via the UI
 bash scripts/pine-smoke.sh         # Pine through IPC
 bash scripts/draw-smoke.sh         # real pointer events paint; undo repaints
 bash scripts/persist-smoke.sh      # drawings survive kill -9 + relaunch
+bash scripts/live-session-smoke.sh # open position survives SIGKILL, restore, dismiss
 bash scripts/journal-smoke.sh      # journal survives kill -9 + relaunch
 bash scripts/trade-smoke.sh        # trade -> SL fires -> journal entry, end to end
 bash scripts/orders-smoke.sh       # limit fills, invalid side refused, OCO pair

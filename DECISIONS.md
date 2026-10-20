@@ -723,3 +723,56 @@ label in every language.
 `4034 -> 400981` overlay pixels when shading is enabled, `January 08:00 / July 07:00 UTC
 shiftedByOneHour true`, Tokyo 1/-50 · London 1/+100 · off-session 1/+25, `sum 3, netSum 75,
 noDoubleCounting true`. 685 tests across 28 files.
+
+
+---
+
+## ADR-018: A restored session must not be re-exposed to the bar it was saved at
+
+**Decision.** `importState()` records the last bar index the session was already exposed to
+(`restoredThrough`), the chart seeds its bar cursor from it, and bar processing is gated on
+the restore attempt having settled.
+
+**The bug.** After a restore the position came back in the database and in the restore notice
+but not in the engine: it had been stopped out on the first tick. Two independent causes, both
+ordering:
+
+1. **A rebuild effect discarded the restored instance.** State was seeded with a hardcoded
+   `new TradingSession("XAUUSD")` plus an effect on `[symbolId]`. The real symbol at mount was
+   `GC=F`, which differs from the default, so the effect fired on the very first commit and
+   replaced the session. The restore imported into an instance the UI then threw away. The
+   initial state is now built from the real symbol, and a ref guards the effect so it fires
+   only on a genuine change.
+2. **A bar was processed before the restore landed.** The restore is an async IPC round trip;
+   effects are synchronous. The bar effect ran first, against an empty engine, with
+   `lastBarRef` still at -1. Setting the skip afterwards was too late. Bar processing is now
+   gated on `restoreSettled`.
+
+Even gated, the bar at the save point must be skipped: the position was already tested against
+it, its low may be below the restored stop, and re-testing closes the position the moment it
+comes back. This is the same rule as ADR-014 (a trailing stop derived from a bar may not be
+tested against that bar) and ADR-015 (the news blackout must run on the replay clock): **a
+decision must never be applied to a period that has already passed.**
+
+**Refusal over partial restore.** A corrupt session is refused with the reason. Restoring two
+of four positions leaves a balance that no longer explains the positions — a simulator showing
+a profit that never existed. `parseSessionState` therefore rejects the whole session if any
+position, order or trade fails validation.
+
+**No structural discrimination on a shape that owns the field.** The first validator returned
+`Position | { reason: string }` and the caller tested `"reason" in parsed`. `Trade` has a real
+`reason` field (its exit reason), so every valid trade was treated as an error and `"TP"` was
+collected as the rejection message — no session containing a trade could be restored. Replaced
+with an explicit `ok` discriminator.
+
+**Exit reasons are a compile-time list.** A hand-written array listed three reasons that do not
+exist and omitted three that do, so a session containing a stop-out trade was unrestorable. Now
+a `Record<ExitReason, true>`: adding a reason to the union fails the build here.
+
+**SIGKILL is the test, not a clean quit.** A graceful shutdown could hide a missing autosave
+behind an exit handler. Surviving SIGKILL proves the state was written when it changed.
+
+**Evidence.** `scripts/live-session-smoke.sh`: `buy 0.2` open with one pending order ->
+SIGKILL -> row on disk `balance 9999.40 positions 1 pending 1 revealed 2000` -> relaunch ->
+`positions 1, lots 0.2, side buy, SL 1951.91`, notice `restored balance 9999.40 · 1 open · 1
+pending` -> dismiss -> `0` rows. 722 tests across 29 files.

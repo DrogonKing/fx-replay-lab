@@ -68,6 +68,11 @@ export interface Db {
   loadJournal(): LoadResult<JournalEntry[]>;
   saveJournal(entries: readonly JournalEntry[]): void;
 
+  // live trading session, per workspace (raw JSON, parsed by the caller exactly once)
+  loadLiveSession(workspace: string): RawLoadResult;
+  saveLiveSession(workspace: string, state: unknown): void;
+  clearLiveSession(workspace: string): void;
+
   // economic calendar: one snapshot, replaced on every import
   saveNews(events: readonly NewsRow[]): number;
   loadNews(): NewsRow[];
@@ -147,6 +152,12 @@ CREATE TABLE IF NOT EXISTS drawing_sets (
   updated_at INTEGER NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS live_sessions (
+  workspace  TEXT PRIMARY KEY,
+  payload    TEXT NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS journal (
   id   TEXT PRIMARY KEY,
   payload TEXT NOT NULL,
@@ -161,6 +172,12 @@ export function openDatabase(file: string): Db {
   raw.pragma("foreign_keys = ON");
   raw.exec(SCHEMA);
   raw.exec(SCHEMA_V2);
+
+  const upsertSessionStmt = raw.prepare(
+    `INSERT INTO live_sessions (workspace, payload, updated_at) VALUES (?, ?, ?)
+     ON CONFLICT(workspace) DO UPDATE SET payload = excluded.payload,
+                                          updated_at = excluded.updated_at`,
+  );
 
   const version = raw.pragma("user_version", { simple: true }) as number;
   if (version < 2) raw.pragma("user_version = 2");
@@ -259,6 +276,22 @@ export function openDatabase(file: string): Db {
     },
     saveJournal: (entries) => {
       saveJournalTx(entries);
+    },
+
+    loadLiveSession: (workspace) => {
+      const row = raw
+        .prepare("SELECT payload, updated_at FROM live_sessions WHERE workspace = ?")
+        .get(workspace) as { payload: string; updated_at: number } | undefined;
+      if (!row) return { raw: null, updatedAt: null };
+      // Return the text, not a parsed object: the renderer does the single parse, which is
+      // what keeps a double-parse from silently dropping records (ADR-010).
+      return { raw: row.payload, updatedAt: row.updated_at };
+    },
+    saveLiveSession: (workspace, state) => {
+      upsertSessionStmt.run(workspace, JSON.stringify(state), Date.now());
+    },
+    clearLiveSession: (workspace) => {
+      raw.prepare("DELETE FROM live_sessions WHERE workspace = ?").run(workspace);
     },
 
     saveNews: (events) => {

@@ -50,6 +50,9 @@ import { LOCALES } from "../core/i18n.js";
 import {
   sessionSpans, sessionLabel, sessionOpenFor, sessionDef, type SessionName,
 } from "../core/sessions.js";
+import {
+  parseSessionState, worthRestoring, describeSession,
+} from "../core/session-state.js";
 import { DataPanel } from "./panels/DataPanel.js";
 import { StrategyPanel } from "./panels/StrategyPanel.js";
 import { JournalPanel } from "./panels/JournalPanel.js";
@@ -106,6 +109,11 @@ export function App(): JSX.Element {
   const [rail, setRail] = useState<RailTab>("data");
   const { lang, setLang, t } = useI18n();
 
+  /** One-line note about the restored (or refused) session, shown under the chart. */
+  const [sessionNotice, setSessionNotice] = useState("");
+  /** false until the session restore attempt has finished; gates bar processing */
+  const [restoreSettled, setRestoreSettled] = useState(false);
+
   /** Journal entries mirrored for the session breakdown. */
   const [journalEntries, setJournalEntries] = useState<Array<{
     entryTime: number; pnl: number; symbol: string;
@@ -147,9 +155,19 @@ export function App(): JSX.Element {
    * contract size. Rebuilding discards open positions, which is correct: they belong
    * to the old instrument.
    */
-  const [session, setSession] = useState(() => new TradingSession("XAUUSD"));
+  const sessionSymbol = (id: string): string =>
+    id.startsWith("GC=F") ? "XAUUSD" : id;
+
+  // Built with the INITIAL symbol, not a hardcoded XAUUSD. A hardcoded default plus an
+  // effect that rebuilds on [symbolId] replaced the session on the very first commit,
+  // which silently threw away a restored one — the restore import landed on an instance
+  // the UI then discarded.
+  const [session, setSession] = useState(() => new TradingSession(sessionSymbol(symbolId)));
+  const sessionForSymbol = useRef(symbolId);
   useEffect(() => {
-    setSession(new TradingSession(symbolId.startsWith("GC=F") ? "XAUUSD" : symbolId));
+    if (sessionForSymbol.current === symbolId) return;
+    sessionForSymbol.current = symbolId;
+    setSession(new TradingSession(sessionSymbol(symbolId)));
   }, [symbolId]);
   const [feedStatus, setFeedStatus] = useState<FeedStatus | null>(null);
   const [loading, setLoading] = useState(false);
@@ -688,6 +706,11 @@ export function App(): JSX.Element {
    */
   const lastBarRef = useRef<number>(-1);
   useEffect(() => {
+    // No bar may be processed until the session restore attempt has finished. The restore is
+    // an async IPC round trip while effects run synchronously, so without this gate the first
+    // bar is processed against an empty engine and the restored position is already stopped
+    // out by the time the state arrives.
+    if (!restoreSettled) return;
     if (base.length === 0 || revealed <= 0) return;
     const i = Math.min(revealed, base.length) - 1;
     if (i === lastBarRef.current) return;
@@ -701,7 +724,7 @@ export function App(): JSX.Element {
       volume: base.volume[i]!,
     };
     session.onBar(bar, i);
-  }, [base, revealed, session]);
+  }, [base, revealed, session, restoreSettled]);
 
   /**
    * ATR series for ATR trailing, computed once per loaded series.
@@ -778,6 +801,64 @@ export function App(): JSX.Element {
     return () => { cancelled = true; };
   }, [workspace]);
 
+  /**
+   * Restore the live trading session for this workspace.
+   *
+   * Only when the stored session is worth restoring — an untouched session would prompt the
+   * user to "resume" nothing, which makes the prompt meaningless over time. On refusal the
+   * reason is shown and a clean session starts, rather than a partially applied one.
+   */
+  const sessionRestored = useRef<string | null>(null);
+  useEffect(() => {
+    const api = (globalThis as unknown as { fxlab?: {
+      loadLiveSession?: (w: string) => Promise<{
+        raw: string | null; updatedAt: number | null;
+      }>;
+    } }).fxlab;
+    if (!api?.loadLiveSession) {
+      setRestoreSettled(true);
+      return;
+    }
+    if (sessionRestored.current === workspace) return;
+    sessionRestored.current = workspace;
+
+    void api.loadLiveSession(workspace).then((res) => {
+      if (res.raw === null) {
+        setRestoreSettled(true);
+        return;
+      }
+
+      let parsed: ReturnType<typeof parseSessionState>;
+      try {
+        // The single decode point, same as drawings: the main process hands over raw JSON.
+        parsed = parseSessionState(JSON.parse(res.raw), { workspace });
+      } catch (e) {
+        setSessionNotice(`stored session is unreadable: ${(e as Error).message}`);
+        setRestoreSettled(true);
+        return;
+      }
+
+      if (parsed.rejected) {
+        setSessionNotice(`session not restored — ${parsed.rejected}`);
+        setRestoreSettled(true);
+        return;
+      }
+      const state = parsed.value;
+      if (!state || !worthRestoring(state)) {
+        setRestoreSettled(true);
+        return;
+      }
+
+      session.importState(state);
+      // Skip the bar the session was saved at: the restored position was already exposed to
+      // it, and re-testing its stop against that bar closes it the moment it comes back.
+      lastBarRef.current = session.restoredThrough;
+      setRevealed((r) => Math.max(r, state.revealed));
+      setSessionNotice(`restored ${describeSession(state)}`);
+      setRestoreSettled(true);
+    });
+  }, [workspace, session]);
+
   /** Debounced autosave: a drag would otherwise write on every pointer move. */
   const saveTimer = useRef<number | null>(null);
   useEffect(() => {
@@ -797,6 +878,40 @@ export function App(): JSX.Element {
       if (saveTimer.current !== null) window.clearTimeout(saveTimer.current);
     };
   }, [revision, workspace]);
+
+  /**
+   * Persist the live session.
+   *
+   * Driven by the session's own subscription, not by a render dependency: positions and the
+   * balance change inside `onBar`, which does not re-render App, so a React effect keyed on
+   * props would save stale state. Debounced because a single bar can settle several
+   * positions and each would otherwise write.
+   */
+  const liveSaveTimer = useRef<number | null>(null);
+  const revealedRef = useRef(0);
+  useEffect(() => {
+    revealedRef.current = revealed;
+  }, [revealed]);
+
+  useEffect(() => {
+    const api = (globalThis as unknown as { fxlab?: {
+      saveLiveSession?: (w: string, s: unknown) => Promise<{ ok: boolean }>;
+    } }).fxlab;
+    if (!api?.saveLiveSession) return;
+
+    const off = session.subscribe(() => {
+      if (liveSaveTimer.current !== null) window.clearTimeout(liveSaveTimer.current);
+      liveSaveTimer.current = window.setTimeout(() => {
+        const state = session.exportState(workspace, revealedRef.current);
+        void api.saveLiveSession!(workspace, state);
+      }, 800);
+    });
+
+    return () => {
+      off();
+      if (liveSaveTimer.current !== null) window.clearTimeout(liveSaveTimer.current);
+    };
+  }, [session, workspace]);
 
   const currentTime = view.length > 0 ? view.time[view.length - 1]! : 0;
   const lastBar = view.length > 0
@@ -1039,6 +1154,24 @@ export function App(): JSX.Element {
         )}
 
         {dragMessage && <p className="status status-warn">{dragMessage}</p>}
+        {sessionNotice && (
+          <p className="status status-info">
+            {sessionNotice}
+            <button
+              className="status-dismiss"
+              onClick={() => {
+                setSessionNotice("");
+                const api = (globalThis as unknown as {
+                  fxlab?: { clearLiveSession?: (w: string) => Promise<{ ok: boolean }> };
+                }).fxlab;
+                void api?.clearLiveSession?.(workspace);
+              }}
+              title="Start a clean session"
+            >
+              ✕
+            </button>
+          </p>
+        )}
         {status && <p className="status">{status}</p>}
 
         <footer className="credit">Charting by Lightweight Charts (Apache-2.0)</footer>
