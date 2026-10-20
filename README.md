@@ -23,7 +23,7 @@ so "no network" is structural rather than a flag someone can forget.
 ## Verified state
 
 ```
-749 unit tests, 30 files ..................... pass
+796 unit tests, 32 files ..................... pass
 strict typecheck (noUncheckedIndexedAccess) ... clean
 offline verification ......................... PASS
 CI config validation ......................... PASS
@@ -106,6 +106,10 @@ Those backtest numbers are a **negative result for a plain EMA(9/21) crossover o
   from the budget — always rounded **down**, because rounding up risks more than asked. When
   even the minimum lot would over-risk, the trade is refused with the arithmetic and the
   Buy/Sell buttons are disabled. See `docs/RISK-SIZING.md`.
+- **Whole-book risk**: the total at stake across open positions *and* pending orders, because
+  three 1% positions are each safe and together put 3% at risk. Positions with no stop are
+  reported as a count — their risk is unknown, not zero. The limit itself is **off by default**;
+  the readout is always live, only the refusal is opt-in. See `docs/BOOK-RISK.md`.
 - **Journal**: entries with tags, R multiples, per-tag and per-month analytics, CSV
   export, row delete. **Closed trades are filed automatically** and tagged with the exit
   reason (`sl`, `tp`, `manual`, `stop-out`); money-at-risk is captured at entry so the R
@@ -155,6 +159,7 @@ bash scripts/draw-smoke.sh         # real pointer events paint; undo repaints
 bash scripts/persist-smoke.sh      # drawings survive kill -9 + relaunch
 bash scripts/live-session-smoke.sh # open position survives SIGKILL, restore, dismiss
 bash scripts/risk-smoke.sh         # risk sizing, refusal, scaling, placed order matches
+bash scripts/book-risk-smoke.sh    # book readout, default-off, refusal, pending, closing
 bash scripts/journal-smoke.sh      # journal survives kill -9 + relaunch
 bash scripts/trade-smoke.sh        # trade -> SL fires -> journal entry, end to end
 bash scripts/orders-smoke.sh       # limit fills, invalid side refused, OCO pair

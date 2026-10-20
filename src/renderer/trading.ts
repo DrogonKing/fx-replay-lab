@@ -24,6 +24,7 @@ import { trailPrice, planPartialClose, atrSeries } from "../core/trailing.js";
 import {
   SESSION_SCHEMA_VERSION, serialiseSessionState, type SessionState,
 } from "../core/session-state.js";
+import { bookRisk, checkLimit, DEFAULT_LIMIT, type BookRisk } from "../core/book-risk.js";
 
 export interface SessionSnapshot {
   balance: number;
@@ -101,6 +102,8 @@ export class TradingSession {
   }
   /** active news blackout, when one blocks trading */
   private blackout: { blocked: boolean; reason?: string } | null = null;
+  /** whole-book risk limit in percent of balance; 0 disables the guard */
+  private riskLimit = DEFAULT_LIMIT.maxPercent;
 
   constructor(symbolId: string, account: Account = DEFAULT_ACCOUNT) {
     this.symbolId = symbolId;
@@ -201,6 +204,13 @@ export class TradingSession {
       };
     }
 
+    // Whole-book check before the engine is called: a limit that only reports after the
+    // fact is a report, not a guard.
+    const bookCheck = this.checkBookLimit(slDistance, lots);
+    if (bookCheck.blocked) {
+      return { ok: false, message: `book risk — ${bookCheck.message}` };
+    }
+
     const pos = this.engine.open({
       side, lots, slDistance, tpDistance,
       price: this.price, time: this.time,
@@ -280,6 +290,50 @@ export class TradingSession {
 
   get blackoutReason(): string | null {
     return this.blackout?.reason ?? null;
+  }
+
+  /**
+   * Whole-book risk: every open position plus every pending order that could fill.
+   *
+   * Rebuilt on demand rather than cached: it reads the live engine, and a cached copy would
+   * be one bar stale exactly when a stop is hit.
+   */
+  bookRisk(): BookRisk {
+    return bookRisk(
+      this.engine.balance,
+      this.engine.positions,
+      this.orders,
+      this.spec,
+    );
+  }
+
+  /** 0 disables the whole-book guard. */
+  setRiskLimit(percent: number): void {
+    this.riskLimit = Math.max(0, percent);
+    this.emit();
+  }
+
+  get riskLimitPercent(): number {
+    return this.riskLimit;
+  }
+
+  /**
+   * Would this candidate trade push the book over the limit?
+   *
+   * Called BEFORE the order is placed. A limit that only reports after the fact is a report,
+   * not a guard.
+   */
+  private checkBookLimit(slDistance: number, lots: number): { blocked: boolean; message?: string } {
+    if (this.riskLimit <= 0) return { blocked: false };
+    const perLot = slDistance * this.spec.contractSize;
+    if (!(perLot > 0) || !(this.engine.balance > 0)) return { blocked: false };
+
+    const candidatePercent = ((lots * perLot) / this.engine.balance) * 100;
+    const check = checkLimit(this.bookRisk(), { maxPercent: this.riskLimit }, {
+      percent: candidatePercent,
+    });
+    if (!check.wouldBreach) return { blocked: false };
+    return { blocked: true, message: check.reason ?? "book risk limit exceeded" };
   }
 
   /** 0 disables trailing. */
@@ -398,6 +452,15 @@ export class TradingSession {
       { minLot: this.spec.lotMin, maxLot: this.spec.lotMax },
     );
     if (err) return { ok: false, message: err };
+
+    // Pending orders are checked against the book as well: otherwise a limit order is a way
+    // around the guard, and the risk appears the moment it fills. An OCO pair counts ONCE,
+    // because only one leg can fill — counting both would refuse a legitimate hedge.
+    const bookCandidateLots = req.ocoWith ? req.lots : req.lots * 1;
+    const bookCheck = this.checkBookLimit(req.slDistance, bookCandidateLots);
+    if (bookCheck.blocked) {
+      return { ok: false, message: `book risk — ${bookCheck.message}` };
+    }
 
     const group = req.ocoWith ? `oco_${++this.orderSeq}` : req.ocoGroup;
 

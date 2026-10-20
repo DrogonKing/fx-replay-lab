@@ -68,6 +68,9 @@ export function TradePanel({
    * Buy/Sell buttons are disabled — placing the trade anyway would risk more than asked,
    * which is the one thing a risk tool must not do.
    */
+  // Rebuilt on every snapshot, which the session emits on every bar and every mutation.
+  const book = useMemo(() => session.bookRisk(), [snap, session]);
+
   const riskPlan = useMemo(() => {
     if (!sizeByRisk) return null;
     return planRiskFromPoints(
@@ -281,6 +284,30 @@ export function TradePanel({
           </>
         )}
       </div>
+
+      <div className="kv" data-kv="book">
+        <span>{t("book.total")}</span>
+        <b className={book.totalPercent > session.riskLimitPercent && session.riskLimitPercent > 0 ? "down" : ""}>
+          {book.totalPercent.toFixed(2)}%
+        </b>
+      </div>
+      <div className="kv" data-kv="book-detail">
+        <span>{t("book.detail")}</span>
+        <b>
+          {t("book.open")} {book.openPercent.toFixed(2)}%
+          {book.pendingRisk > 0 && ` · ${t("book.pending")} ${book.pendingPercent.toFixed(2)}%`}
+          {book.unprotectedCount > 0 && ` · ${book.unprotectedCount} ${t("book.noStop")}`}
+        </b>
+      </div>
+      <label>
+        {t("book.limit")}
+        <input
+          data-field="book-limit"
+          value={String(session.riskLimitPercent)}
+          onChange={(e) => session.setRiskLimit(Number(e.target.value) || 0)}
+          inputMode="decimal"
+        />
+      </label>
 
       <div className="kv">
         <span>{t("trade.riskReward")}</span>

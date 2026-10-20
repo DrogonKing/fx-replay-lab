@@ -820,3 +820,43 @@ them believe they are risk-sized when they are not, which is the same lie by a d
 $9,867 gives `0.1973 -> 0.19`; the placed order is `0.19` and matches the computed expectation;
 `0.001%` gives `lots "—"` with `buyDisabled true` and the arithmetic in the warning; and the size
 scales `0.5% -> 0.09, 1% -> 0.19, 2% -> 0.39`. 749 tests across 30 files.
+
+
+---
+
+## ADR-020: The whole-book risk limit is off by default
+
+**Decision.** `DEFAULT_LIMIT.maxPercent = 0` — disabled. The risk readout is always shown; the
+refusal requires the user to enter a number.
+
+**Why.** The guard first shipped enabled at 6%, and the pre-existing suite caught the consequence:
+seven tests that opened positions failed. They were not asserting anything about book risk — they
+opened a trade the user asked for and were refused by a rule the user never set. That is the same
+mistake as a mandatory session filter: the app deciding which trades are acceptable. A tool
+reports; it does not police unasked.
+
+The distinction worth keeping: **information is always on, gates are opt-in.** The book
+percentage, the breakdown, the unprotected count and the headroom are always computed and
+displayed. Only the refusal is conditional.
+
+**A position with no stop contributes UNKNOWN risk, not zero.** Counting it as zero would make the
+book look safest exactly when it is least protected. It is excluded from the money total and
+reported as a count, and the warning is returned even when no number is breached — an entirely
+unprotected book reads 0.00% and *must not* report "fine".
+
+**Checked in both entry points.** `open()` and `placeOrder()` both call the guard before the
+engine, because a limit order is otherwise a way around the rule: the risk simply appears later,
+when it fills. An OCO pair counts once, since only one leg can fill; counting both would refuse a
+legitimate hedge.
+
+**Closing is never blocked**, matching the news blackout: the guard exists to stop new risk, not
+to imprison the user in a position.
+
+**Exposure is reported separately from risk.** `netLots` and `grossLots` answer a different
+question, and averaging them into a single "risk" number would make both wrong.
+
+**Evidence.** `scripts/book-risk-smoke.sh`: clean book reads `0.00%` with the limit field at `0`;
+two 0.5-lot positions take it to `5.07%` then `10.14%`; with the limit off a third trade is
+allowed and the book reaches `15.22%`; setting `5%` refuses with `this trade would put 17.24% of
+the balance at risk, over the 5% book limit`; a pending order is refused with the same message;
+`closeAll()` closes 3 of 3 and files 9 trades. 796 tests across 32 files.

@@ -213,6 +213,32 @@ be copied into a broker statement or a spreadsheet and still work.
 Known gap: validation messages produced by the engine (for example "buy limit 2050 is above
 the market") are still English inside the Persian interface.
 
+### Book risk — what if everything goes wrong at once
+
+Above the order form:
+
+```
+book at risk     10.14%
+breakdown        open 10.14% · pending 2.00% · 1 no stop
+book limit %     0
+```
+
+This is the total at stake across **all** open positions and every pending order that could
+still fill. Three positions at 1% each are each safe and together risk 3% — this is where you
+see that.
+
+**The limit is off by default (0).** The readout is always live. If you want the app to refuse
+trades that would take the book over a number, type one:
+
+```
+book risk — this trade would put 17.24% of the balance at risk, over the 5% book limit
+```
+
+A position with **no stop** is shown as a count (`1 no stop`), not as 0% — its risk is unknown,
+and counting it as zero would make the book look safest exactly when it is least protected.
+
+**Closing is never blocked**, whatever the limit says.
+
 ### Sizing by risk instead of by lots
 
 Tick **size by risk** and enter a percentage. The lots field becomes read-only and shows the

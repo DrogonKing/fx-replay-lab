@@ -18,6 +18,7 @@ bash scripts/draw-smoke.sh            # real pointer events paint, undo repaints
 bash scripts/persist-smoke.sh         # drawings survive kill -9 + relaunch
 bash scripts/live-session-smoke.sh    # open position survives SIGKILL, restore, dismiss
 bash scripts/risk-smoke.sh            # risk sizing, refusal, scaling, placed order matches
+bash scripts/book-risk-smoke.sh       # book readout, default-off, refusal, pending, closing
 bash scripts/journal-smoke.sh         # journal survives kill -9 + relaunch
 bash scripts/trade-smoke.sh           # trade -> SL -> journal entry, end to end
 bash scripts/orders-smoke.sh          # limit fills, invalid side refused, OCO pair
@@ -121,7 +122,13 @@ BAD PINE: "unsupported ta.notReal() (bar 0)"  ← precise, not silent
       disables Buy/Sell in that state
 - [x] Points/price conversion in one place (one point = 10^-digits), with `maxStopPoints`
       answering "how wide can my stop be at this risk"
-- [ ] Whole-book risk guard (three 1% positions are each 1%; nothing warns the total is 3%)
+- [x] Whole-book risk readout: open + pending risk as a percentage of balance, pending as a
+      labelled estimate, positions with no stop reported as a COUNT (their risk is unknown, not
+      zero), plus net/gross exposure
+- [x] Opt-in book limit checked in open() and placeOrder(); OFF by default so the tool never
+      refuses a trade nobody asked it to police; closing is never blocked
+- [ ] Correlation-aware book risk (two long gold positions count as 2x, two correlated pairs
+      would too)
 - [ ] Per-symbol risk presets
 
 ## Phase 4 — Indicators
