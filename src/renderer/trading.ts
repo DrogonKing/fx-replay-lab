@@ -16,7 +16,7 @@ import { findSymbol } from "../core/symbol.js";
 import type { JournalEntry } from "../core/persist.js";
 import { tradeToJournalEntry, mergeNewEntries } from "../core/trade-to-journal.js";
 import {
-  processBar, validateOrder, describeOrder,
+  processBar, validateOrder,
   type PendingOrder, type PendingKind, type Bar,
 } from "../core/orders.js";
 import { constrainLevel, applyBreakEven } from "../core/position-manage.js";
@@ -99,6 +99,11 @@ export class TradingSession {
   /** Bar index the restored session was already exposed to; -1 when none. */
   get restoredThrough(): number {
     return this.restoredThroughBar;
+  }
+
+  /** The balance the account started with, so the equity curve has a baseline. */
+  get startBalance(): number {
+    return this.engine.account.startingBalance;
   }
   /** active news blackout, when one blocks trading */
   private blackout: { blocked: boolean; reason?: string } | null = null;

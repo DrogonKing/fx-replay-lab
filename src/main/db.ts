@@ -14,7 +14,7 @@
  */
 import Database from "better-sqlite3";
 import {
-  parseDrawings, parseJournal, serialiseDrawings, serialiseJournal,
+  parseJournal, serialiseDrawings,
   type JournalEntry,
 } from "../core/persist.js";
 import type { Drawing } from "../core/drawings.js";
@@ -73,6 +73,10 @@ export interface Db {
   saveLiveSession(workspace: string, state: unknown): void;
   clearLiveSession(workspace: string): void;
 
+  // user-defined symbols: raw JSON, parsed by the renderer exactly once
+  loadSymbols(): RawLoadResult;
+  saveSymbols(symbols: unknown): void;
+
   // economic calendar: one snapshot, replaced on every import
   saveNews(events: readonly NewsRow[]): number;
   loadNews(): NewsRow[];
@@ -126,8 +130,9 @@ CREATE TABLE IF NOT EXISTS news (
 CREATE INDEX IF NOT EXISTS idx_news_time ON news(time);
 
 CREATE TABLE IF NOT EXISTS settings (
-  key   TEXT PRIMARY KEY,
-  value TEXT NOT NULL
+  key        TEXT PRIMARY KEY,
+  value      TEXT NOT NULL,
+  updated_at INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS workspaces (
@@ -181,6 +186,17 @@ export function openDatabase(file: string): Db {
 
   const version = raw.pragma("user_version", { simple: true }) as number;
   if (version < 2) raw.pragma("user_version = 2");
+
+  // v3: settings gained updated_at for the custom-symbol load result. CREATE TABLE IF NOT
+  // EXISTS does nothing on an existing database, so the column is added explicitly — this is
+  // the migration that would otherwise fail on every install that upgraded from v2.
+  if (version < 3) {
+    const cols = raw.pragma("table_info(settings)") as Array<{ name: string }>;
+    if (!cols.some((c) => c.name === "updated_at")) {
+      raw.exec("ALTER TABLE settings ADD COLUMN updated_at INTEGER NOT NULL DEFAULT 0");
+    }
+    raw.pragma("user_version = 3");
+  }
 
   const listStmt = raw.prepare(
     `SELECT id, name, currency, starting_balance AS startingBalance,
@@ -292,6 +308,21 @@ export function openDatabase(file: string): Db {
     },
     clearLiveSession: (workspace) => {
       raw.prepare("DELETE FROM live_sessions WHERE workspace = ?").run(workspace);
+    },
+
+    loadSymbols: () => {
+      const row = raw
+        .prepare("SELECT value, updated_at FROM settings WHERE key = 'custom_symbols'")
+        .get() as { value: string; updated_at: number } | undefined;
+      if (!row) return { raw: null, updatedAt: null };
+      return { raw: row.value, updatedAt: row.updated_at };
+    },
+    saveSymbols: (symbols) => {
+      raw.prepare(
+        `INSERT INTO settings (key, value, updated_at) VALUES ('custom_symbols', ?, ?)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value,
+                                        updated_at = excluded.updated_at`,
+      ).run(JSON.stringify(symbols), Date.now());
     },
 
     saveNews: (events) => {

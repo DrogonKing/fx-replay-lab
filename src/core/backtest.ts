@@ -13,7 +13,7 @@
  *                        re-evaluating JS on every optimizer pass.
  */
 import { AccountEngine } from "./account.js";
-import { sma, ema, rsi, bollinger, atr, macd, stochastic, crossover, crossunder } from "./indicators.js";
+import { sma, ema, rsi, bollinger, atr, macd, stochastic } from "./indicators.js";
 import type { Account, Candle, CandleSeries, Position, SymbolSpec } from "./types.js";
 
 export interface BacktestSettings {

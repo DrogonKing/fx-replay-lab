@@ -25,12 +25,20 @@ import type {
   Trade,
 } from "./types.js";
 import { moneyFromPriceDelta, roundPrice } from "./symbol.js";
+import {
+  swapFor, marginState, DEFAULT_SWAP, DEFAULT_SLIPPAGE, DEFAULT_MARGIN_CALL,
+  type SwapRates, type SwapSpec, type SlippageSpec, type MarginCallSpec, type MarginState,
+} from "./costs.js";
 
 export interface EngineOptions {
   account: Account;
   symbol: SymbolSpec;
   /** spread in price units; overrides the symbol default when provided */
   spread?: number;
+  /** overnight financing, per lot per night; omitting it means no swap at all */
+  swap?: SwapRates;
+  /** slippage model; omitting it means exact fills, which is the offline default */
+  slippage?: SlippageSpec;
 }
 
 export interface OpenRequest {
@@ -75,12 +83,33 @@ export class AccountEngine {
   trades: Trade[] = [];
   /** true once equity hit zero and everything was force-closed */
   stoppedOut = false;
+  /**
+   * true while the margin level is below the call threshold but above the stop-out.
+   *
+   * A warning state, not a lock: it refuses NEW positions (checked by the caller) but does
+   * not close anything. Closing is the stop-out level's job.
+   */
+  marginCalled = false;
+
+  /** overnight financing rates, per lot per night, in account currency */
+  swapRates: SwapRates = { long: 0, short: 0 };
+  swapSpec: SwapSpec = DEFAULT_SWAP;
+  /** slippage and margin-call behaviour; both off by default */
+  slippage: SlippageSpec = DEFAULT_SLIPPAGE;
+  marginCall: MarginCallSpec = DEFAULT_MARGIN_CALL;
 
   constructor(opts: EngineOptions) {
     this.account = opts.account;
     this.symbol = opts.symbol;
     this.spread = opts.spread ?? opts.symbol.spread;
     this.balance = opts.account.startingBalance;
+    if (opts.swap) this.swapRates = opts.swap;
+    if (opts.slippage) this.slippage = opts.slippage;
+  }
+
+  /** Current margin state, for the panel and for refusing new risk. */
+  marginState(bid: number): MarginState {
+    return marginState(this.equity(bid), this.usedMargin(bid), this.marginCall);
   }
 
   // ---------------------------------------------------------------- pricing
@@ -266,6 +295,16 @@ export class AccountEngine {
     const closed: Trade[] = [];
 
     for (const p of [...this.positions]) {
+      // --- 0. overnight financing ------------------------------------------
+      // Accrued per bar, so a position held for a week pays 7 nights of swap. Without
+      // this a multi-day replay was free to hold, which flatters every carry strategy.
+      if (this.swapRates.long !== 0 || this.swapRates.short !== 0) {
+        const charge = swapFor(
+          p.side, p.lots, p.entryTime, bar.time, this.swapRates, this.swapSpec,
+        );
+        if (charge !== 0) p.swap = charge;
+      }
+
       // --- 1. trailing stop -------------------------------------------------
       if (p.trailDistance != null && p.trailDistance > 0) {
         if (p.side === "buy") {
@@ -311,11 +350,22 @@ export class AccountEngine {
       }
     }
 
-    // --- 3. stop-out ------------------------------------------------------
-    if (this.positions.length > 0 && this.equity(bar.close) <= 0) {
-      const forced = this.closeAll(bar.close, bar.time, "Stop-out");
-      closed.push(...forced);
-      this.stoppedOut = true;
+    // --- 3. margin call and stop-out --------------------------------------
+    // Two levels, not one. The old rule fired only at equity <= 0, which is bankruptcy: a
+    // real broker calls first, at a margin level of 50%, and force-closes at 20%.
+    if (this.positions.length > 0) {
+      const state = this.marginState(bar.close);
+      if (state === "stop-out") {
+        const forced = this.closeAll(bar.close, bar.time, "Stop-out");
+        closed.push(...forced);
+        this.stoppedOut = true;
+      } else if (state === "call") {
+        this.marginCalled = true;
+      } else {
+        this.marginCalled = false;
+      }
+    } else {
+      this.marginCalled = false;
     }
     return closed;
   }

@@ -85,6 +85,13 @@ function createWindow(): BrowserWindow {
 
 app.whenReady().then(() => {
   db = openDatabase(path.join(dataDir(), "fx-replay-lab.db"));
+  ipcMain.handle("db:loadSymbols", () =>
+    db?.loadSymbols() ?? { raw: null, updatedAt: null });
+  ipcMain.handle("db:saveSymbols", (_e, symbols: unknown) => {
+    db?.saveSymbols(symbols);
+    return { ok: true };
+  });
+
   ipcMain.handle("db:loadLiveSession", (_e, workspace: string) =>
     db?.loadLiveSession(workspace) ?? { raw: null, updatedAt: null });
   ipcMain.handle("db:saveLiveSession", (_e, workspace: string, state: unknown) => {

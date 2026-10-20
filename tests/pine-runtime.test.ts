@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { parsePine } from "../src/core/pine/parser.js";
 import { runPine } from "../src/core/pine/runtime.js";
 import { seriesFromCandles } from "../src/core/series.js";
-import { sma, rsi, ema } from "../src/core/indicators.js";
+import { sma, rsi } from "../src/core/indicators.js";
 import type { Candle, CandleSeries } from "../src/core/types.js";
 
 function series(closes: number[]): CandleSeries {

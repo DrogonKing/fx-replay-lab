@@ -12,6 +12,10 @@ echo '=== TYPECHECK (empty output = clean) ==='
 npx tsc --noEmit -p tsconfig.json 2>&1 | head -5
 
 echo
+echo '=== LINT (errors only; warnings are return-type style) ==='
+npx eslint src tests --ext .ts,.tsx 2>&1 | tail -3
+
+echo
 echo '=== BUILD ==='
 npx vite build 2>&1 | tail -4
 npx tsc -p tsconfig.main.json && node scripts/postbuild-main.mjs

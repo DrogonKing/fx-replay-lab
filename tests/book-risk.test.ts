@@ -63,16 +63,16 @@ describe("positionRisk", () => {
 
 describe("pendingRiskOf", () => {
   it("prices the order's own stop distance", () => {
-    expect(pendingRiskOf(order(), GOLD, 10_000)).toBeCloseTo(100, 6);
+    expect(pendingRiskOf(order(), GOLD)).toBeCloseTo(100, 6);
   });
 
   it("ignores an order with no stop", () => {
-    expect(pendingRiskOf(order({ slDistance: 0 }), GOLD, 10_000)).toBe(0);
+    expect(pendingRiskOf(order({ slDistance: 0 }), GOLD)).toBe(0);
   });
 
   it("ignores orders that are no longer pending", () => {
-    expect(pendingRiskOf(order({ status: "filled" }), GOLD, 10_000)).toBe(0);
-    expect(pendingRiskOf(order({ status: "cancelled" }), GOLD, 10_000)).toBe(0);
+    expect(pendingRiskOf(order({ status: "filled" }), GOLD)).toBe(0);
+    expect(pendingRiskOf(order({ status: "cancelled" }), GOLD)).toBe(0);
   });
 });
 

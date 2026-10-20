@@ -292,6 +292,8 @@ export function JournalPanel({ session, onEntries }: Props = {}): JSX.Element {
         <button onClick={addSample} title={t("journal.sample")}>{t("journal.sample")}</button>
       </div>
 
+      {note && <p className="status status-warn" data-note="journal">{note}</p>}
+
       {stats.count === 0 && <p className="msg">{t("journal.empty")}</p>}
 
       {stats.count > 0 && (

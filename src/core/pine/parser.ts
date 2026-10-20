@@ -10,7 +10,7 @@ import type {
   Node, Program, Block, Call, ExprStmt, VarDecl,
 } from "./ast.js";
 
-interface PToken extends Token {}
+type PToken = Token;
 
 /** Convert newline+indent into INDENT/DEDENT tokens. */
 function withIndentation(tokens: Token[]): PToken[] {
@@ -112,7 +112,7 @@ export class Parser {
   // ------------------------------------------------------------- program
   parseProgram(): Program {
     this.skipNewlines();
-    let version = 5;
+    const version = 5;
     let scriptKind: Program["scriptKind"] = "unknown";
     const headerArgs: Record<string, Node> = {};
 

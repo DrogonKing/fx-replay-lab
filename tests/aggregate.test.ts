@@ -7,7 +7,7 @@ import {
   TIMEFRAMES,
 } from "../src/core/aggregate.js";
 import { seriesFromCandles } from "../src/core/series.js";
-import type { Candle, Timeframe } from "../src/core/types.js";
+import type { Candle } from "../src/core/types.js";
 
 const T0 = Date.UTC(2024, 0, 2, 0, 0, 0) / 1000; // 2024-01-02 00:00Z (a Tuesday)
 

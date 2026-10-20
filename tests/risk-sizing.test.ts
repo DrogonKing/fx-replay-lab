@@ -4,7 +4,6 @@ import {
   rewardRisk, maxStopPoints, type RiskRequest,
 } from "../src/core/risk-sizing.js";
 import { DEFAULT_SYMBOLS, lotsForRisk } from "../src/core/symbol.js";
-import type { SymbolSpec } from "../src/core/types.js";
 
 const GOLD = DEFAULT_SYMBOLS.find((s) => s.name === "XAUUSD")!;
 const EURUSD = DEFAULT_SYMBOLS.find((s) => s.name === "EURUSD")!;

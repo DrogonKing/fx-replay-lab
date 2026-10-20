@@ -62,7 +62,7 @@ export function sessionOpenFor(epochSeconds: number, def: SessionDef): number {
   // A session whose close hour exceeds 24 (Sydney 22:00–07:00) may belong to the previous
   // local day when we are in its after-midnight tail: 03:00 local is still "yesterday's"
   // session. Step back until the local hour is >= the open hour.
-  let dayStart = wc.hour < def.openHour ? wc.day - 1 : wc.day;
+  const dayStart = wc.hour < def.openHour ? wc.day - 1 : wc.day;
   // `fromWallClock` handles the DST gaps; a nonexistent 02:00 on a spring-forward day is
   // shifted forward rather than becoming NaN.
   return localToUtc(def.zone, wc.year, wc.month, dayStart, def.openHour, def.openMinute);

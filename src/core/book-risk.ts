@@ -97,7 +97,7 @@ export function positionRisk(
  * the real risk may be larger. It is labelled as such in the UI rather than presented as
  * exact.
  */
-export function pendingRiskOf(o: PendingOrder, spec: SymbolSpec, balance: number): number {
+export function pendingRiskOf(o: PendingOrder, spec: SymbolSpec): number {
   if (o.status !== "pending") return 0;
   if (!(o.slDistance > 0)) return 0;
   return o.slDistance * spec.contractSize * o.lots;
@@ -117,7 +117,7 @@ export function bookRisk(
   const openRisk = perPosition.reduce((sum, p) => sum + p.money, 0);
 
   const pendingMoney = pending.reduce(
-    (sum, o) => sum + pendingRiskOf(o, spec, balance),
+    (sum, o) => sum + pendingRiskOf(o, spec),
     0,
   );
 

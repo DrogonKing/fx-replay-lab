@@ -33,7 +33,7 @@ export function NewsPanel({
   const { t } = useI18n();
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [issues, setIssues] = useState<ParseIssue[]>([]);
-  const [rowsSeen, setRowsSeen] = useState(0);
+  const [_rowsSeen, setRowsSeen] = useState(0);
   const [msg, setMsg] = useState("");
   const [dayFirst, setDayFirst] = useState(false);
   const [blackoutHigh, setBlackoutHigh] = useState("5");

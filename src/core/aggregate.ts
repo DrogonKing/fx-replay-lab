@@ -85,8 +85,6 @@ function bucketKey(
 function bucketStart(
   time: number,
   tf: Timeframe,
-  anchorZone: string,
-  sessionOpenHour: number,
 ): number {
   if (tf.kind === "minute") {
     const step = tf.minutes * 60;
@@ -149,7 +147,7 @@ export function aggregate(
 
     if (k !== prevKey) {
       w++;
-      out.time[w] = bucketStart(t, tf, anchorZone, sessionOpenHour);
+      out.time[w] = bucketStart(t, tf);
       out.open[w] = o;
       out.high[w] = h;
       out.low[w] = l;
@@ -233,9 +231,7 @@ export function aggregateForming(
   out.close.set(closed.close);
   out.volume.set(closed.volume);
 
-  out.time[closed.length] = bucketStart(
-    base.time[start]!, tf, anchorZone, sessionOpenHour,
-  );
+  out.time[closed.length] = bucketStart(base.time[start]!, tf);
   out.open[closed.length] = base.open[start]!;
   out.high[closed.length] = hi;
   out.low[closed.length] = lo;

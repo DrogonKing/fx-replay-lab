@@ -20,7 +20,6 @@ import { runBacktest, type BacktestResult, type BacktestSettings } from "../core
 import { optimize, walkForward, monteCarlo, type GridAxis, type RankMetric } from "../core/optimize.js";
 import { parsePine } from "../core/pine/parser.js";
 import { runPine } from "../core/pine/runtime.js";
-import { seriesFromCandles } from "../core/series.js";
 import { findSymbol } from "../core/symbol.js";
 import type { Account, Candle, CandleSeries } from "../core/types.js";
 

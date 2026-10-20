@@ -58,6 +58,20 @@ describe("catalogue completeness", () => {
     }
   });
 
+  it("covers the equity curve and chart type labels", () => {
+    const keys = [
+      "tab.equity", "equity.title", "equity.netPnl", "equity.peak",
+      "equity.maxDd", "equity.nowDd", "equity.empty",
+      "app.chartType", "app.candles", "app.bars", "app.line", "app.area",
+      "app.logScale", "app.logScaleHint",
+    ];
+    for (const key of keys) {
+      for (const lang of ALL) {
+        expect(MESSAGES[lang][key], `${lang} ${key}`).toBeTruthy();
+      }
+    }
+  });
+
   it("has no empty values", () => {
     for (const lang of ALL) {
       for (const [k, v] of Object.entries(MESSAGES[lang])) {

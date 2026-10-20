@@ -51,6 +51,12 @@ const api = {
   saveJournal: (entries: unknown[]): Promise<{ ok: boolean }> =>
     ipcRenderer.invoke("db:saveJournal", entries),
 
+  /** User-defined symbols: raw JSON text, parsed by the renderer once. */
+  loadSymbols: (): Promise<{ raw: string | null; updatedAt: number | null }> =>
+    ipcRenderer.invoke("db:loadSymbols"),
+  saveSymbols: (symbols: unknown): Promise<{ ok: boolean }> =>
+    ipcRenderer.invoke("db:saveSymbols", symbols),
+
   /** Live trading session for a workspace: raw JSON text, parsed by the renderer once. */
   loadLiveSession: (workspace: string): Promise<{
     raw: string | null; updatedAt: number | null;

@@ -25,7 +25,7 @@ import { formatDateTime, formatOffset } from "../core/timezone.js";
 import { parseCsv } from "../core/csv.js";
 import { seriesFromCandles } from "../core/series.js";
 import {
-  DrawingHistory, type Drawing, type DrawingKind, type Point,
+  DrawingHistory, type Drawing, type DrawingKind,
 } from "../core/drawings.js";
 import {
   initialState, onPointerDown, onPointerMove, onPointerUp, onCancel,
@@ -39,11 +39,13 @@ import {
 } from "../core/persist.js";
 import { TradingSession } from "./trading.js";
 import {
-  positionLines, hitHandle, type PriceLine,
+  positionLines, hitHandle,
 } from "../core/position-manage.js";
 import { TradePanel } from "./panels/TradePanel.js";
 import { NewsPanel } from "./panels/NewsPanel.js";
 import { SessionsPanel } from "./panels/SessionsPanel.js";
+import { EquityPanel } from "./panels/EquityPanel.js";
+import { SymbolsPanel } from "./panels/SymbolsPanel.js";
 import { newsMarkers, type CalendarEvent } from "../core/news.js";
 import { useI18n } from "./i18n-context.js";
 import { LOCALES } from "../core/i18n.js";
@@ -62,7 +64,8 @@ import type { CandleSeries, Timeframe } from "../core/types.js";
 
 type IndicatorKind = "SMA" | "EMA" | "BB" | "RSI" | "ADX" | "CCI" | "VWAP" | "SUPERTREND";
 type RailTab =
-  | "data" | "trade" | "news" | "sessions" | "indicators" | "strategy" | "journal";
+  | "data" | "trade" | "news" | "sessions" | "equity"
+  | "indicators" | "strategy" | "journal" | "symbols";
 
 const SESSION_LABELS: Record<SessionName, string> = {
   sydney: sessionLabel("sydney"),
@@ -92,7 +95,44 @@ const ACCOUNT = {
 export function App(): JSX.Element {
   const chartHost = useRef<HTMLDivElement | null>(null);
   const chartRef = useRef<IChartApi | null>(null);
+/**
+ * Build the price series for a chart type.
+ *
+ * lightweight-charts fixes a series' type at creation, so switching candles <-> line means
+ * a new series. Kept as one function so the colours cannot drift between the branches, and
+ * so the call site never has to know which options each type accepts.
+ */
+function makePriceSeries(
+  chart: IChartApi,
+  kind: "candles" | "bars" | "line" | "area",
+): ISeriesApi<"Candlestick"> {
+  if (kind === "bars") {
+    return chart.addBarSeries({
+      upColor: "#26a69a", downColor: "#ef5350", thinBars: false,
+    }) as unknown as ISeriesApi<"Candlestick">;
+  }
+  if (kind === "line") {
+    return chart.addLineSeries({
+      color: "#26a69a", lineWidth: 2, priceLineVisible: false,
+    }) as unknown as ISeriesApi<"Candlestick">;
+  }
+  if (kind === "area") {
+    return chart.addAreaSeries({
+      lineColor: "#26a69a", topColor: "rgba(38,166,154,0.28)",
+      bottomColor: "rgba(38,166,154,0.02)", lineWidth: 2,
+    }) as unknown as ISeriesApi<"Candlestick">;
+  }
+  return chart.addCandlestickSeries({
+    upColor: "#26a69a", downColor: "#ef5350", borderVisible: false,
+    wickUpColor: "#26a69a", wickDownColor: "#ef5350",
+  });
+}
+
   const candleRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
+  /** "candles" | "bars" | "line" | "area"; a chart type change rebuilds the series */
+  const [chartType, setChartType] = useState<"candles" | "bars" | "line" | "area">("candles");
+  const [logScale, setLogScale] = useState(false);
+  const chartTypeRef = useRef(chartType);
   const lineRefs = useRef<Map<string, ISeriesApi<"Line">>>(new Map());
 
   const [base, setBase] = useState<CandleSeries>(() => generateSampleSeries(30_000));
@@ -224,10 +264,7 @@ export function App(): JSX.Element {
       autoSize: true,
     });
     chartRef.current = chart;
-    candleRef.current = chart.addCandlestickSeries({
-      upColor: "#26a69a", downColor: "#ef5350", borderVisible: false,
-      wickUpColor: "#26a69a", wickDownColor: "#ef5350",
-    });
+    candleRef.current = makePriceSeries(chart, chartTypeRef.current);
     // Drawing overlay: a canvas pinned exactly over the chart. Lightweight Charts
     // has no vector layer, so shapes are painted here in screen space while the
     // model stays in data space.
@@ -916,6 +953,71 @@ export function App(): JSX.Element {
     };
   }, [session, workspace]);
 
+  /**
+   * Rebuild the price series when the chart type changes.
+   *
+   * The overlay keeps a reference to the series for `priceToCoordinate`, so it is rebuilt
+   * too — a stale series reference paints every drawing at the wrong height.
+   */
+  const firstTypeRun = useRef(true);
+  useEffect(() => {
+    chartTypeRef.current = chartType;
+    const chart = chartRef.current;
+    if (!chart || !canvasRef.current) return;
+    if (firstTypeRun.current) { firstTypeRun.current = false; return; }
+
+    if (candleRef.current) chart.removeSeries(candleRef.current);
+    const series = makePriceSeries(chart, chartType);
+    candleRef.current = series;
+
+    // feed whatever the current view holds; an empty chart stays empty until the next reveal
+    if (view.length > 0) {
+      // The series was cast to Candlestick for the ref, but at runtime a line series only
+      // accepts {time,value}. Cast the ARGUMENT, not the elements.
+      const isValueSeries = chartType === "line" || chartType === "area";
+      // view.time is a Float64Array, so .map would return a typed array and coerce the
+      // object literals to numbers. Convert to a real array first.
+      const times = Array.from(view.time);
+      let data: unknown[];
+      if (isValueSeries) {
+        data = times.map((t, i) => ({ time: t, value: view.close[i]! }));
+      } else {
+        data = times.map((t, i) => ({
+          time: t, open: view.open[i]!, high: view.high[i]!,
+          low: view.low[i]!, close: view.close[i]!,
+        }));
+      }
+      const setData = (series as unknown as { setData: (d: unknown[]) => void }).setData;
+      setData.call(series, data);
+    }
+
+    overlayRef.current = new DrawingOverlay(
+      canvasRef.current, chart, series,
+      {
+        background: "#131722", grid: "#1e222d", text: "#d1d4dc",
+        crosshair: "#787b86", accent: "#f0b90b",
+        up: "#26a69a", down: "#ef5350",
+      },
+    );
+    overlayRef.current.queue(
+      drawingsRef.current.get(), interRef.current, view.length, null, null,
+    );
+    setRevision((r) => r + 1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chartType]);
+
+  /** Log scale is a price-scale option: one call, no series rebuild. */
+  useEffect(() => {
+    const chart = chartRef.current;
+    if (!chart) return;
+    chart.applyOptions({
+      rightPriceScale: {
+        mode: logScale ? 1 : 0,
+        borderColor: "#2a2e39",
+      },
+    });
+  }, [logScale]);
+
   const currentTime = view.length > 0 ? view.time[view.length - 1]! : 0;
   const lastBar = view.length > 0
     ? {
@@ -943,6 +1045,30 @@ export function App(): JSX.Element {
           >
             {TIMEFRAMES.map((t) => <option key={t.label} value={t.label}>{t.label}</option>)}
           </select>
+        </label>
+
+        <label>
+          {t("app.chartType")}{" "}
+          <select
+            data-field="chart-type"
+            value={chartType}
+            onChange={(e) => setChartType(e.target.value as typeof chartType)}
+          >
+            <option value="candles">{t("app.candles")}</option>
+            <option value="bars">{t("app.bars")}</option>
+            <option value="line">{t("app.line")}</option>
+            <option value="area">{t("app.area")}</option>
+          </select>
+        </label>
+
+        <label title={t("app.logScaleHint")}>
+          <input
+            data-field="log-scale"
+            type="checkbox"
+            checked={logScale}
+            onChange={(e) => setLogScale(e.target.checked)}
+          />{" "}
+          {t("app.logScale")}
         </label>
 
         <label>
@@ -1044,7 +1170,7 @@ export function App(): JSX.Element {
 
       <aside className="panel">
         <nav className="rail-tabs">
-          {(["data", "trade", "news", "sessions", "indicators", "strategy", "journal"] as RailTab[]).map((tabId) => (
+          {(["data", "trade", "news", "sessions", "equity", "indicators", "strategy", "journal", "symbols"] as RailTab[]).map((tabId) => (
             <button
               key={tabId}
               data-tab={tabId}
@@ -1103,6 +1229,18 @@ export function App(): JSX.Element {
           />
         )}
 
+        {rail === "symbols" && <SymbolsPanel />}
+
+        {rail === "equity" && (
+          <EquityPanel
+            startingBalance={session.startBalance}
+            trades={session.snapshot().trades.map((t) => ({
+              exitTime: t.exitTime, pnl: t.pnl,
+            }))}
+            balance={session.snapshot().balance}
+          />
+        )}
+
         {rail === "sessions" && (
           <SessionsPanel
             show={showSessions}
@@ -1135,14 +1273,37 @@ export function App(): JSX.Element {
               {indicators.map((ind) => (
                 <li key={ind.id}>
                   <span className="dot" style={{ background: ind.color }} />
-                  {ind.kind}({ind.period})
+                  <b>{ind.kind}</b>
+                  <input
+                    className="mini-num"
+                    data-field={`period-${ind.id}`}
+                    value={String(ind.period)}
+                    onChange={(e) => {
+                      const n = Number(e.target.value);
+                      // Guard the period here rather than in computeIndicator: a period of
+                      // 0 or NaN makes every indicator return NaN, which looks like a broken
+                      // chart rather than a bad input.
+                      if (!Number.isFinite(n) || n < 1) return;
+                      setIndicators((l) =>
+                        l.map((x) => (x.id === ind.id ? { ...x, period: Math.floor(n) } : x)),
+                      );
+                    }}
+                    inputMode="numeric"
+                    title={t("ind.period")}
+                  />
                   <button
                     className="mini"
+                    data-action={`remove-${ind.id}`}
                     onClick={() => setIndicators((l) => l.filter((x) => x.id !== ind.id))}
+                    title={t("ind.remove")}
                   >✕</button>
                 </li>
               ))}
             </ul>
+            {indicators.length === 0 && <p className="msg">{t("ind.empty")}</p>}
+            <p className="msg" data-kv="ind-count">
+              {t("ind.count")}: {indicators.length}
+            </p>
           </>
         )}
 

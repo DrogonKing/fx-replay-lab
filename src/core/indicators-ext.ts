@@ -183,7 +183,8 @@ export function ichimoku(
 
   const tenkan = nanArray(n);
   const kijun = nanArray(n);
-  const senkouA = nanArray(n);
+  // not implemented: the leading span A is computed by no path here yet
+  const _senkouA = nanArray(n);
   const senkouB = nanArray(n);
   const chikou = nanArray(n);
 
