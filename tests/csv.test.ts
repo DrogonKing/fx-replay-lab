@@ -77,6 +77,28 @@ describe("parseTimestampField", () => {
     expect(parseTimestampField("hello", 0)).toBeNull();
     expect(parseTimestampField("", 0)).toBeNull();
   });
+
+  // MT4/MT5 and most broker exports put the clock in the SAME field as a dotted date. This
+  // used to fail here while parseDateTimeParts accepted it, so a file with one combined
+  // timestamp column was rejected row by row with no explanation.
+  it("handles a dotted date with the clock in the same field", () => {
+    expect(parseTimestampField("2024.01.02 10:00", 0)).toBe(Date.UTC(2024, 0, 2, 10) / 1000);
+    expect(parseTimestampField("2024.01.02 10:00:30", 0))
+      .toBe(Date.UTC(2024, 0, 2, 10, 0, 30) / 1000);
+  });
+
+  it("handles a slashed date with a time", () => {
+    expect(parseTimestampField("2024/01/02 10:00", 0)).toBe(Date.UTC(2024, 0, 2, 10) / 1000);
+  });
+
+  it("handles a bare date as midnight", () => {
+    expect(parseTimestampField("2024.01.02", 0)).toBe(Date.UTC(2024, 0, 2) / 1000);
+  });
+
+  it("applies the source offset to a dotted timestamp too", () => {
+    // UTC+2 source: 10:00 local is 08:00 UTC
+    expect(parseTimestampField("2024.01.02 10:00", 2)).toBe(Date.UTC(2024, 0, 2, 8) / 1000);
+  });
 });
 
 describe("parseCsv - MT4/MT5 layout", () => {

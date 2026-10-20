@@ -123,21 +123,46 @@ export function parseTimestampField(raw: string, utcOffsetHours: number): number
   }
 
   // ISO 8601: 2024-01-02T10:00:00Z / 2024-01-02 10:00:00 / with offset
-  const iso = /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})(?::(\d{2}))?(?:(\.\d+))?(Z|[+-]\d{2}:?\d{2})?$/
+  const iso = /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})(?::(\d{2}))?(?:\.\d+)?(Z|[+-]\d{2}:?\d{2})?$/
     .exec(s);
-  if (!iso) return null;
-  const [, y, mo, d, h, mi, sec, frac, tz] = iso;
-  if (tz) {
-    // An explicit zone makes the value absolute: do not apply the CSV offset.
-    const ms = Date.parse(s.replace(" ", "T"));
-    return Number.isFinite(ms) ? Math.floor(ms / 1000) : null;
+  if (iso) {
+    const [, y, mo, d, h, mi, sec, tz] = iso;
+    if (tz) {
+      // An explicit zone makes the value absolute: do not apply the CSV offset.
+      const ms = Date.parse(s.replace(" ", "T"));
+      return Number.isFinite(ms) ? Math.floor(ms / 1000) : null;
+    }
+    const base = Date.UTC(
+      Number(y), Number(mo) - 1, Number(d),
+      Number(h), Number(mi), Number(sec ?? 0),
+    ) / 1000;
+    return base - utcOffsetHours * 3600;
   }
-  const base = Date.UTC(
-    Number(y), Number(mo) - 1, Number(d),
-    Number(h), Number(mi), Number(sec ?? 0),
-  ) / 1000;
-  void frac;
-  return base - utcOffsetHours * 3600;
+
+  // Dotted or slashed date with a time in the SAME field: 2024.01.02 10:00 / 2024/01/02 10:00:00
+  //
+  // MT4/MT5 exports and most broker CSVs use this, and it used to fail here while
+  // parseDateTimeParts accepted it — so a file whose date and clock share one column was
+  // read by neither parser and every row was rejected as a bad timestamp.
+  const dotted = /^(\d{4})[./-](\d{1,2})[./-](\d{1,2})[ T](\d{1,2}):(\d{2})(?::(\d{2}))?$/.exec(s);
+  if (dotted) {
+    const [, y, mo, d, h, mi, sec] = dotted;
+    const base = Date.UTC(
+      Number(y), Number(mo) - 1, Number(d),
+      Number(h), Number(mi), Number(sec ?? 0),
+    ) / 1000;
+    return Number.isFinite(base) ? base - utcOffsetHours * 3600 : null;
+  }
+
+  // A bare date, no clock: midnight.
+  const dateOnly = /^(\d{4})[./-](\d{1,2})[./-](\d{1,2})$/.exec(s);
+  if (dateOnly) {
+    const [, y, mo, d] = dateOnly;
+    const base = Date.UTC(Number(y), Number(mo) - 1, Number(d)) / 1000;
+    return Number.isFinite(base) ? base - utcOffsetHours * 3600 : null;
+  }
+
+  return null;
 }
 
 /** Median spacing in minutes across the parsed bars, ignoring weekend gaps. */
