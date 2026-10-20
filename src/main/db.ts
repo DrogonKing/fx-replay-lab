@@ -49,6 +49,13 @@ export interface RawLoadResult {
   updatedAt: number | null;
 }
 
+export interface NewsRow {
+  time: number;
+  currency: string;
+  impact: string;
+  title: string;
+}
+
 export interface Db {
   listAccounts(): AccountRow[];
   createAccount(a: Omit<AccountRow, "id">): number;
@@ -60,6 +67,10 @@ export interface Db {
   // journal entries, global (they carry their own symbol)
   loadJournal(): LoadResult<JournalEntry[]>;
   saveJournal(entries: readonly JournalEntry[]): void;
+
+  // economic calendar: one snapshot, replaced on every import
+  saveNews(events: readonly NewsRow[]): number;
+  loadNews(): NewsRow[];
 
   // plain settings (last symbol, timeframe, offline flag, ...)
   getSetting(key: string): string | null;
@@ -248,6 +259,26 @@ export function openDatabase(file: string): Db {
     },
     saveJournal: (entries) => {
       saveJournalTx(entries);
+    },
+
+    saveNews: (events) => {
+      // Replace wholesale: a calendar import is a snapshot, not an append. Keeping old
+      // rows would leave events for weeks the user has no data for and silently widen
+      // the blackout windows.
+      const tx = raw.transaction(() => {
+        raw.prepare("DELETE FROM news").run();
+        const ins = raw.prepare(
+          "INSERT INTO news (time, currency, impact, title) VALUES (?, ?, ?, ?)",
+        );
+        for (const e of events) ins.run(e.time, e.currency, e.impact, e.title);
+      });
+      tx();
+      return events.length;
+    },
+    loadNews: () => {
+      return raw
+        .prepare("SELECT time, currency, impact, title FROM news ORDER BY time")
+        .all() as NewsRow[];
     },
 
     getSetting: (key) => {

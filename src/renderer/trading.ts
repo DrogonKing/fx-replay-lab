@@ -84,6 +84,8 @@ export class TradingSession {
   private atr: number[] = [];
   /** index of the bar currently being processed, for ATR alignment */
   private barIndex = 0;
+  /** active news blackout, when one blocks trading */
+  private blackout: { blocked: boolean; reason?: string } | null = null;
 
   constructor(symbolId: string, account: Account = DEFAULT_ACCOUNT) {
     this.symbolId = symbolId;
@@ -168,6 +170,9 @@ export class TradingSession {
     if (this.price <= 0) return { ok: false, message: "no price yet" };
     if (lots <= 0) return { ok: false, message: "lots must be positive" };
     if (this.engine.stoppedOut) return { ok: false, message: "account stopped out" };
+    if (this.blackout) {
+      return { ok: false, message: `news blackout — ${this.blackout.reason}` };
+    }
 
     // Reject an order the account cannot margin. Silently opening it would produce
     // a negative free margin and a misleading equity curve.
@@ -245,6 +250,21 @@ export class TradingSession {
   /** 0 disables automatic break-even. */
   setBreakEvenTrigger(r: number): void {
     this.breakEvenR = Math.max(0, r);
+  }
+
+  /**
+   * News blackout window, if any.
+   *
+   * Enforced in `open()` and `placeOrder()` rather than only in the UI: a disabled
+   * button is a hint, and the whole point of a news rule is that you cannot trade
+   * through it by accident.
+   */
+  setBlackout(check: { blocked: boolean; reason?: string } | null): void {
+    this.blackout = check && check.blocked ? check : null;
+  }
+
+  get blackoutReason(): string | null {
+    return this.blackout?.reason ?? null;
   }
 
   /** 0 disables trailing. */
@@ -350,6 +370,9 @@ export class TradingSession {
     ocoWith?: { side: Side; kind: PendingKind; price: number };
   }): PlaceOrderResult {
     if (this.price <= 0) return { ok: false, message: "no price yet" };
+    if (this.blackout) {
+      return { ok: false, message: `news blackout — ${this.blackout.reason}` };
+    }
 
     const err = validateOrder(
       {

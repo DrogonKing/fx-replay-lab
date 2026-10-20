@@ -51,6 +51,13 @@ const api = {
   saveJournal: (entries: unknown[]): Promise<{ ok: boolean }> =>
     ipcRenderer.invoke("db:saveJournal", entries),
 
+  /** Persist an economic calendar snapshot (replaces the previous one). */
+  saveNews: (events: unknown[]): Promise<number> =>
+    ipcRenderer.invoke("db:saveNews", events),
+  loadNews: (): Promise<Array<{
+    time: number; currency: string; impact: string; title: string;
+  }>> => ipcRenderer.invoke("db:loadNews"),
+
   getSetting: (key: string): Promise<string | null> =>
     ipcRenderer.invoke("db:getSetting", key),
   setSetting: (key: string, value: string): Promise<{ ok: boolean }> =>

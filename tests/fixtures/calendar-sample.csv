@@ -1,0 +1,8 @@
+Date,Time,Currency,Impact,Event,Actual,Forecast,Previous
+2024-01-02,15:00,USD,Medium,ISM Manufacturing PMI,47.4,47.1,46.7
+2024-01-03,13:30,USD,High,Non-Farm Payrolls,216K,170K,173K
+2024-01-03,15:00,USD,Medium,ISM Services PMI,50.6,52.6,52.7
+2024-01-04,07:00,EUR,Low,Sentix Index,-15.8,-16.0,-16.8
+2024-01-04,13:30,USD,High,CPI m/m,0.3%,0.2%,0.1%
+2024-01-05,13:30,USD,High,FOMC Minutes,,,
+2024-01-05,19:00,USD,Low,Consumer Credit,1.2B,10.0B,9.3B

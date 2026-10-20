@@ -42,6 +42,8 @@ import {
   positionLines, hitHandle, type PriceLine,
 } from "../core/position-manage.js";
 import { TradePanel } from "./panels/TradePanel.js";
+import { NewsPanel } from "./panels/NewsPanel.js";
+import { newsMarkers, type CalendarEvent } from "../core/news.js";
 import { DataPanel } from "./panels/DataPanel.js";
 import { StrategyPanel } from "./panels/StrategyPanel.js";
 import { JournalPanel } from "./panels/JournalPanel.js";
@@ -50,7 +52,7 @@ import type { Feed, FeedStatus } from "../core/feed.js";
 import type { CandleSeries, Timeframe } from "../core/types.js";
 
 type IndicatorKind = "SMA" | "EMA" | "BB" | "RSI" | "ADX" | "CCI" | "VWAP" | "SUPERTREND";
-type RailTab = "data" | "trade" | "indicators" | "strategy" | "journal";
+type RailTab = "data" | "trade" | "news" | "indicators" | "strategy" | "journal";
 
 interface IndicatorState {
   id: number;
@@ -88,6 +90,26 @@ export function App(): JSX.Element {
   ]);
   const [status, setStatus] = useState<string>("");
   const [rail, setRail] = useState<RailTab>("data");
+
+  /**
+   * Time of the newest revealed bar, in epoch seconds.
+   *
+   * The news blackout must be evaluated against the REPLAY clock, not wall time: during
+   * a replay of 2024 a 2024 calendar would never block anything if compared to today,
+   * and a current calendar would block the wrong bars.
+   */
+  const replayTime = useMemo(() => {
+    if (base.length === 0) return 0;
+    const i = Math.min(revealed, base.length) - 1;
+    return i >= 0 ? (base.time[i] ?? 0) : 0;
+  }, [base, revealed]);
+
+  /** Imported economic calendar, mirrored into chart markers. */
+  const [calendar, setCalendar] = useState<CalendarEvent[]>([]);
+  /** News blackout state, so the trade panel can refuse orders. */
+  const [blackout, setBlackout] = useState<{ blocked: boolean; reason?: string }>({
+    blocked: false,
+  });
   const [offline, setOffline] = useState(true);
   const [symbolId, setSymbolId] = useState("GC=F");
 
@@ -414,6 +436,9 @@ export function App(): JSX.Element {
     if (!window.location.search.includes("test=1")) return;
     (window as unknown as { __fxlab?: unknown }).__fxlab = {
       session,
+      // calendar helpers so a smoke test can assert the blackout reaches the engine
+      setBlackout: (b: { blocked: boolean; reason?: string } | null) =>
+        session.setBlackout(b),
       chart: () => chartRef.current,
       state: () => ({
         positions: session.snapshot().positions.map((p) => ({
@@ -425,6 +450,9 @@ export function App(): JSX.Element {
       setLevel: (id: number, kind: "sl" | "tp", price: number) =>
         session.setLevel(id, kind, price),
       setBreakEven: (r: number) => session.setBreakEvenTrigger(r),
+      setTrailing: (m: "off" | "distance" | "extreme" | "atr", v: number) =>
+        session.setTrailing(m, v),
+      closePartial: (id: number, lots: number) => session.closePartial(id, lots),
       priceToY: (price: number) => {
         const c = chartRef.current;
         const s = candleRef.current;
@@ -460,6 +488,36 @@ export function App(): JSX.Element {
     const off = session.subscribe(() => repaint());
     return off;
   }, [session, repaint]);
+
+  // Push the news state into the session so open()/placeOrder() can refuse. A disabled
+  // button is a hint; this is the rule.
+  useEffect(() => {
+    session.setBlackout(blackout);
+  }, [blackout, session]);
+
+  /**
+   * News markers on the price series.
+   *
+   * lightweight-charts 4.x keeps markers on the series, and setMarkers() replaces the
+   * whole list — appending is not offered, so the full visible window is mapped each
+   * time. Only that window: a marker per event across 30k bars builds tens of thousands
+   * of shapes for no benefit.
+   */
+  useEffect(() => {
+    const series = candleRef.current;
+    if (!series || view.length === 0) return;
+    const from = view.time[0]!;
+    const to = view.time[view.length - 1]!;
+    const markers = newsMarkers(calendar, from, to, { maxPerBar: 1 });
+
+    series.setMarkers(markers.map((m) => ({
+      time: m.time as Time,
+      position: m.position,
+      color: m.color,
+      shape: m.shape,
+      text: m.text,
+    })));
+  }, [calendar, view]);
 
   /** Handle being dragged: which position and which leg. */
   const dragHandle = useRef<{ positionId: number; kind: "sl" | "tp" } | null>(null);
@@ -804,7 +862,7 @@ export function App(): JSX.Element {
 
       <aside className="panel">
         <nav className="rail-tabs">
-          {(["data", "trade", "indicators", "strategy", "journal"] as RailTab[]).map((t) => (
+          {(["data", "trade", "news", "indicators", "strategy", "journal"] as RailTab[]).map((t) => (
             <button
               key={t}
               className={rail === t ? "rail-tab active" : "rail-tab"}
@@ -843,11 +901,21 @@ export function App(): JSX.Element {
         {rail === "trade" && (
           <TradePanel
             session={session}
+            blackout={blackout}
             price={currentPrice}
             contractSize={session.specRef.contractSize}
             lotStep={session.specRef.lotStep}
             minLot={session.specRef.lotMin}
             maxLot={session.specRef.lotMax}
+          />
+        )}
+
+        {rail === "news" && (
+          <NewsPanel
+            currency={session.symbol.startsWith("XAU") ? "USD" : session.symbol.slice(0, 3)}
+            now={replayTime}
+            onEvents={setCalendar}
+            onBlackout={setBlackout}
           />
         )}
 

@@ -198,6 +198,32 @@ closes more than you asked, rounding down leaves a position you think is gone.
 the lots. A 60-point stop on 0.5 lots of gold risks $3,000, so a $42 profit is 0.014R.
 That is an honest reading of an oversized position.
 
+### Economic calendar
+
+**NEWS** tab → **Import CSV…**. Any export with a date, a currency, an impact and an event
+name works; the parser also accepts `datetime` in one column, epoch timestamps, and impact
+written as `High`, `***` or `3`.
+
+If your file uses day-first dates (`25/01/2024`), tick **day-first dates**. Without it a
+row like `25/01/2024` is rejected with a message rather than quietly becoming a January
+date in the wrong year.
+
+After importing you get:
+
+- impact-coloured markers on the chart (red arrow below the bar for high impact)
+- an upcoming table with the next events at or after the replay time
+- a status line: **Trading open for USD** or **TRADING PAUSED — …**
+
+**A high-impact window refuses new orders.** The pause is measured against the replay's
+own clock, so a January 2024 calendar blocks January 2024 bars, not today. Adjust the
+window with **pause ±** (default 5 minutes either side of high impact).
+
+**Closing is never blocked.** A blackout stops new risk; it will not trap you in a
+position you want out of.
+
+If some rows fail to parse, a details section lists them with line numbers. A calendar
+that silently drops rows looks complete when it is not.
+
 ### Closed trades go to the journal automatically
 
 Every close — manual, stop, target, stop-out — creates a journal entry carrying:

@@ -575,3 +575,51 @@ reason is the only honest option.
 `firstSL 1984.39 -> lastSL 1988.26, tightened true, closedEarly -1, stillOpen true`, then
 `½` reduced 1.0 -> 0.5 with the position still open and a `partial` row (+42) reaching the
 journal. 556 tests across 24 files.
+
+
+---
+
+## ADR-015: The news blackout runs on the replay clock and is enforced in the engine
+
+**Decision.** The blackout window is evaluated against the newest revealed bar's time, and
+`open()` / `placeOrder()` refuse while it is active. Closing is never blocked.
+
+**Why the replay clock.** The first version passed `Date.now()` into the panel. In an app
+whose entire purpose is replaying history, that is nonsense: a January 2024 calendar
+compared against today never fires, so the feature silently did nothing while looking
+correct in the UI. The time must come from the bar the user is looking at. This is the
+same class of mistake as the trailing-stop ordering bug — plausible code, wrong clock.
+
+**Why in the engine.** A disabled button is a hint; a rule that can be clicked through is
+decoration. The trade panel also disables Buy/Sell, but that is feedback, not enforcement.
+
+**Why closing stays open.** A blackout exists to stop new risk. Trapping a user in a
+position they want out of because a news event started is worse than the exposure it
+tries to prevent.
+
+**Parsing decisions, each from a real export shape:**
+
+1. **Date and time are separate columns** in most provider CSVs. Mapping both aliases to
+   one field parsed **zero events** from a standard `Date,Time,Currency,Impact,Event`
+   file. Date, time and datetime are now three distinct columns and are combined.
+2. **A single `Date` column may hold the full datetime.** The header check must accept
+   `date` alone, or those files are rejected wholesale.
+3. **Day/month order is decided per file, not per row.** `01/05/2024` is ambiguous on its
+   own. The parser inspects the file for a first component above 12 to settle it, and a
+   `dayFirst` flag can override. A row like `25/01/2024` in a month-first file is rejected
+   with a message rather than silently rolled into the wrong month — the same honesty rule
+   the CSV candle importer uses.
+4. **An unknown impact becomes `low`, not a dropped row.** Losing a rate decision because
+   its impact column said "Volatility: 2/3" is worse than under-labelling it.
+
+**Bad rows are reported with line numbers.** "6 events from 6 rows" and "6 from 8, 2
+skipped" must be distinguishable, or a calendar looks complete when it is not.
+
+**Markers are capped one per timestamp and limited to the visible window.** Fifteen events
+sharing a second stack into an unreadable pile, and 30k bars of markers is tens of
+thousands of shapes for no benefit.
+
+**Evidence.** `scripts/news-smoke.sh`: tab present, `6 events from 6 rows` with
+`3 / 2 / 1` impact split, 6 rows in SQLite, `marketRefused: true` with
+`"news blackout — high impact USD: Non-Farm Payrolls"`, pending order refused identically,
+and `opened 1 → closed 1` proving closing still works. 621 tests across 26 files.

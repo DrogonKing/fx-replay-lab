@@ -21,6 +21,7 @@ bash scripts/trade-smoke.sh           # trade -> SL -> journal entry, end to end
 bash scripts/orders-smoke.sh          # limit fills, invalid side refused, OCO pair
 bash scripts/position-smoke.sh        # level lines, real SL drag, break-even
 bash scripts/trailing-smoke.sh        # trail tightens, never closes early, partial close
+bash scripts/news-smoke.sh            # CSV import, persist, blackout refuses an order
 bash scripts/screenshot.sh /tmp/a.png # capture the UI
 ```
 
@@ -133,8 +134,11 @@ BAD PINE: "unsupported ta.notReal() (bar 0)"  ← precise, not silent
 - [ ] Open a backtest trade in replay
 
 ## Phase 6 — News and sessions
-- [ ] News CSV/JSON import, calendar UI, markers revealed by replay time
-- [ ] Avoid-news rule
+- [x] News CSV import (date+time split or combined, day-first detection, impact
+      aliases), persisted in SQLite, impact counts and skipped-row report
+- [x] Calendar UI with upcoming events and a live trading status line
+- [x] Markers revealed by replay time (visible window only, one per timestamp)
+- [x] Avoid-news rule: new orders refused on the REPLAY clock, closing always allowed
 - [ ] Session shading (Asia/London/NY)
 
 ## Phase 7 — Pine Script

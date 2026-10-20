@@ -11,6 +11,8 @@ import type { Side } from "../../core/types.js";
 
 interface Props {
   session: TradingSession;
+  /** active news blackout, if any; orders are refused while blocked */
+  blackout?: { blocked: boolean; reason?: string };
   /** current bid price, for the preview and the market buttons */
   price: number;
   /** symbol spec, so lot step and contract size come from one place */
@@ -22,7 +24,7 @@ interface Props {
 }
 
 export function TradePanel({
-  session, price, contractSize, lotStep, minLot, maxLot, onFiled,
+  session, price, contractSize, lotStep, minLot, maxLot, onFiled, blackout,
 }: Props): JSX.Element {
   const [snap, setSnap] = useState<SessionSnapshot>(() => session.snapshot());
   const [lots, setLots] = useState("0.10");
@@ -124,6 +126,13 @@ export function TradePanel({
       <div className="kv"><span>margin</span>
         <b>{snap.usedMargin.toFixed(0)} / free {snap.freeMargin.toFixed(0)}</b>
       </div>
+
+      {blackout?.blocked && (
+        <p className="warn-box">
+          Trading paused for news — {blackout.reason}. Orders are refused until the
+          window passes.
+        </p>
+      )}
 
       {snap.stoppedOut && (
         <p className="warn-box">
@@ -260,7 +269,7 @@ export function TradePanel({
         <button
           className="buy-btn"
           onClick={() => place("buy")}
-          disabled={snap.stoppedOut}
+          disabled={snap.stoppedOut || blackout?.blocked}
           title="Buy at ask"
         >
           ▲ Buy {lotsValid ? lotsNum.toFixed(2) : ""}
@@ -268,7 +277,7 @@ export function TradePanel({
         <button
           className="sell-btn"
           onClick={() => place("sell")}
-          disabled={snap.stoppedOut}
+          disabled={snap.stoppedOut || blackout?.blocked}
           title="Sell at bid"
         >
           ▼ Sell {lotsValid ? lotsNum.toFixed(2) : ""}

@@ -13,7 +13,7 @@
 import { app, BrowserWindow, ipcMain, shell } from "electron";
 import path from "node:path";
 import fs from "node:fs";
-import { openDatabase, type Db } from "./db.js";
+import { openDatabase, type Db, type NewsRow } from "./db.js";
 import { parseDrawings, parseJournal } from "../core/persist.js";
 import { fetchJson } from "./net.js";
 import {
@@ -85,6 +85,15 @@ function createWindow(): BrowserWindow {
 
 app.whenReady().then(() => {
   db = openDatabase(path.join(dataDir(), "fx-replay-lab.db"));
+  ipcMain.handle("db:saveNews", (_e, events: unknown) => {
+    // `db` is assigned in whenReady; the handler cannot fire before the window exists.
+    const store = db;
+    if (!store) return 0;
+    const list = (Array.isArray(events) ? events : []) as NewsRow[];
+    return store.saveNews(list);
+  });
+  ipcMain.handle("db:loadNews", () => db?.loadNews() ?? []);
+
   ipcMain.handle("app:info", () => ({
     version: app.getVersion(),
     dataDir: dataDir(),

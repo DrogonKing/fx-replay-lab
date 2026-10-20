@@ -23,7 +23,7 @@ so "no network" is structural rather than a flag someone can forget.
 ## Verified state
 
 ```
-556 unit tests, 24 files ..................... pass
+621 unit tests, 26 files ..................... pass
 strict typecheck (noUncheckedIndexedAccess) ... clean
 offline verification ......................... PASS
 CI config validation ......................... PASS
@@ -81,6 +81,12 @@ Those backtest numbers are a **negative result for a plain EMA(9/21) crossover o
   orders it after the SL/TP pass. The `½` button closes part of a position, produces its
   own journal entry, splits commission proportionally, and refuses a remainder that is
   off the lot step rather than rounding. See `docs/TRAILING.md`.
+- **Economic calendar**: import a provider CSV (date+time split or combined, day-first
+  auto-detection, impact as words/stars/numbers), stored in SQLite, drawn as impact-coloured
+  chart markers. A high-impact window **refuses new orders in the engine** — measured
+  against the replay clock, not wall time — while closing a position stays allowed. Skipped
+  rows are reported with line numbers instead of being dropped silently. See
+  `docs/NEWS-CALENDAR.md`.
 - **Journal**: entries with tags, R multiples, per-tag and per-month analytics, CSV
   export, row delete. **Closed trades are filed automatically** and tagged with the exit
   reason (`sl`, `tp`, `manual`, `stop-out`); money-at-risk is captured at entry so the R
@@ -133,6 +139,7 @@ bash scripts/trade-smoke.sh        # trade -> SL fires -> journal entry, end to 
 bash scripts/orders-smoke.sh       # limit fills, invalid side refused, OCO pair
 bash scripts/position-smoke.sh     # level lines, real SL drag, break-even
 bash scripts/trailing-smoke.sh     # trail tightens, never closes early, partial close
+bash scripts/news-smoke.sh         # calendar import, persist, blackout refuses an order
 ```
 
 ## Docs
