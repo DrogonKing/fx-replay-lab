@@ -54,8 +54,13 @@ Those backtest numbers are a **negative result for a plain EMA(9/21) crossover o
   (`var`, `[]` history, if/for/while/switch, user functions, ~25 `ta.*`, `math.*`,
   `str.*`, plotting, strategy orders). See `docs/PINE-COMPATIBILITY.md`.
 - **Chart**: candlesticks, 8 indicators, replay transport, timezone and custom
-  timeframes, symbol legend with OHLC, drawing model (trendline, ray, rectangle, Fib,
-  channel, position tool) with hit-testing and undo/redo.
+  timeframes, symbol legend with OHLC.
+- **Drawing toolkit**: 60+ tools in 9 grouped flyouts — lines, channels (incl.
+  pitchfork), shapes, Fibonacci (retracement/extension/channel/time-zone/fan/arcs/
+  wedge), Gann fan and box, chart patterns with ratio validation (XABCD, ABCD,
+  Elliott, head & shoulders, harmonics), forecast and position tools with R multiple
+  and money-at-risk, 10 annotation types, measure. Canvas overlay, undo/redo, drag to
+  move, verified by real pointer events. See `docs/DRAWING-TOOLS.md`.
 - **Journal**: entries with tags, R multiples, per-tag and per-month analytics, CSV
   export.
 - **Packaging**: electron-builder for Windows (nsis + portable zip), macOS (dmg),
@@ -65,8 +70,7 @@ Those backtest numbers are a **negative result for a plain EMA(9/21) crossover o
 
 Stated plainly, because a checklist that hides gaps is worse than no checklist:
 
-- Drawing tools are a tested **model**; mouse interaction on the canvas is not wired.
-- Drawings and journal entries do **not** persist to SQLite yet.
+- Drawings do **not** persist to SQLite yet (session-only); journal entries likewise.
 - Order types beyond market (limit/stop/OCO), swap accrual, margin-call threshold.
 - News calendar, session shading.
 - Pine: no `request.security`, no `label`/`line`/`box`, no tuple destructuring, no

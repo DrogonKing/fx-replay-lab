@@ -74,8 +74,17 @@ timestamp,Open,High,Low,Close               ← epoch s, epoch ms, or ISO
 - **Play / Pause / Step** — Space and → work anywhere outside an input.
 - **speed** — 1×, 3×, 10×, 40×.
 - The slider jumps anywhere in the loaded history.
-- **draw** — horizontal line, trend line, ray, rectangle, Fib retracement,
-  channel, long/short position tool.
+- **the left rail** — 60+ drawing tools in 9 grouped flyouts: lines, channels,
+  shapes, Fibonacci, Gann, patterns (XABCD/Elliott/harmonics), forecast, annotation,
+  measure. See `docs/DRAWING-TOOLS.md` for the full list and how each one behaves.
+
+Pick a tool, then click (one-point tools) or drag (two-point tools) or click
+repeatedly (patterns). Esc returns to the cursor. Ctrl+Z undoes, Ctrl+Shift+Z redoes,
+the bin deletes everything.
+
+Patterns validate as you draw: an XABCD whose ratios leave the tolerance bands, or
+an Elliott impulse where wave 3 is the shortest, is reported rather than silently
+drawn as if it were valid.
 
 Replay never reveals the future: the chart can only draw bars up to the current
 replay position, so you cannot accidentally see what comes next.
@@ -174,7 +183,13 @@ copying that folder.
   prices can differ from a broker's spot XAUUSD by the futures basis.
 - **Live streaming is polling, not a tick feed.** Bars refresh on reload, not
   tick-by-tick.
-- **Drawing tools are session-only** — they are not yet persisted per symbol.
+- **Drawing tools are session-only** — they are not yet persisted per symbol, so
+  they are lost when the app closes. The model and SQLite table exist; the wiring
+  does not.
+- **Fib fan, arcs, wedge and Gann box** draw their geometry but have fewer
+  configurable options than TradingView.
+- **Pattern validation is advisory** — it flags ratios outside the usual bands; it
+  is not a signal.
 - **Journal is not yet persisted** to SQLite from the UI.
 - **No auto-update**; the app is offline by design.
 - **Tested on Linux only** in this build. The Windows and macOS installers are
