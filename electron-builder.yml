@@ -1,0 +1,54 @@
+# Packaging configuration.
+#
+# Targets: Windows installer + portable, macOS dmg, Linux AppImage + deb.
+# The app is fully offline, so nothing extra is bundled beyond the built code.
+appId: site.drogon.fxreplaylab
+productName: FX Replay Lab
+copyright: FX Replay Lab
+
+directories:
+  output: release
+  buildResources: build
+
+files:
+  - dist/**/*
+  - package.json
+  - "!**/*.map"
+  - "!**/node_modules/**/{test,__tests__,tests,example,examples}/**"
+
+# better-sqlite3 ships a prebuilt .node; keep it unpacked so Electron can load it
+asarUnpack:
+  - "**/node_modules/better-sqlite3/**"
+
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+    - target: zip
+      arch: [x64]
+  artifactName: "${productName}-${version}-${arch}.${ext}"
+
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  shortcutName: FX Replay Lab
+
+mac:
+  target:
+    - target: dmg
+      arch: [x64, arm64]
+  category: public.app-category.finance
+  artifactName: "${productName}-${version}-${arch}.${ext}"
+
+linux:
+  target:
+    - target: AppImage
+      arch: [x64]
+    - target: deb
+      arch: [x64]
+  category: Finance
+  artifactName: "${productName}-${version}-${arch}.${ext}"
+
+# No auto-update: the app is offline by design.
+publish: null
