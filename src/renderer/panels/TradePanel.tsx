@@ -10,6 +10,7 @@ import type { TradingSession, SessionSnapshot } from "../trading.js";
 import type { Side } from "../../core/types.js";
 import { useI18n } from "../i18n-context.js";
 import { planRiskFromPoints } from "../../core/risk-sizing.js";
+import { localiseError } from "../../core/errors.js";
 import type { SymbolSpec } from "../../core/types.js";
 
 interface Props {
@@ -114,7 +115,9 @@ export function TradePanel({
     // market: fill now. everything else goes on the book.
     if (kind === "market") {
       const r = session.open(side, lotsNum, slNum || 0, tpNum || 0, tagList);
-      setMsg(r.ok ? `${side} ${lotsNum} opened` : (r.message ?? "refused"));
+      setMsg(r.ok
+        ? `${side} ${lotsNum} ${t("trade.opened")}`
+        : localiseError(r.message ?? "", (k, v) => t(k, v)));
       return;
     }
 
@@ -146,7 +149,9 @@ export function TradePanel({
           }
         : undefined,
     });
-    setMsg(r.ok ? (r.message ?? `${side} ${kind} placed`) : (r.message ?? "refused"));
+    setMsg(r.ok
+      ? (r.message ?? `${side} ${kind} ${t("trade.placed")}`)
+      : localiseError(r.message ?? "", (k, v) => t(k, v)));
   };
 
   return (
@@ -480,7 +485,7 @@ export function TradePanel({
                             Math.floor((p.lots / 2) / lotStep) * lotStep,
                           );
                           const r = session.closePartial(p.id, Number(half.toFixed(2)));
-                          if (!r.ok) setMsg(r.message ?? "partial close refused");
+                          if (!r.ok) setMsg(localiseError(r.message ?? "", (k, v) => t(k, v)));
                         }}
                         title={`Close half (${(Math.max(minLot, Math.floor((p.lots / 2) / lotStep) * lotStep)).toFixed(2)} lots)`}
                       >

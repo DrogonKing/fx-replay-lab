@@ -14,7 +14,25 @@ import type { CandleSeries } from "../types.js";
 import { sma, ema, rma, rsi, atr, macd, stochastic, bollinger, wma, highestHigh, lowestLow } from "../indicators.js";
 import type { Node, Program } from "./ast.js";
 
-export type PineValue = number | boolean | string | null;
+/**
+ * A multi-value result.
+ *
+ * Pine functions like `ta.bb`, `ta.macd`, `ta.dmi` and `ta.stoch` return several series at
+ * once, and the script binds them with `[a, b] = ta.macd(...)`. Before this the middle value
+ * was returned on its own, which made the tuple form unusable: the destructuring had nothing
+ * to destructure.
+ */
+export interface PineTuple {
+  readonly kind: "pinetuple";
+  readonly items: readonly PineValue[];
+}
+
+export type PineValue = number | boolean | string | null | PineTuple;
+
+const isTuple = (v: PineValue | undefined): v is PineTuple =>
+  typeof v === "object" && v !== null && (v as PineTuple).kind === "pinetuple";
+
+const tuple = (...items: PineValue[]): PineTuple => ({ kind: "pinetuple", items });
 
 /** A named slot holding the series of values that variable took over bars. */
 class SeriesSlot {
@@ -97,6 +115,9 @@ function toNum(v: PineValue | undefined): number {
   if (v === undefined || v === null) return NA;
   if (typeof v === "number") return v;
   if (typeof v === "boolean") return v ? 1 : 0;
+  // A tuple where a number is expected is a script bug, but it must not throw mid-backtest:
+  // NA propagates through the maths and the user sees an empty plot, not a crashed run.
+  if (isTuple(v)) return NA;
   const n = Number(v);
   return Number.isNaN(n) ? NA : n;
 }
@@ -105,11 +126,24 @@ function toBool(v: PineValue | undefined): boolean {
   if (typeof v === "boolean") return v;
   if (typeof v === "number") return !Number.isNaN(v) && v !== 0;
   if (v === null) return false;
-  return v !== "";
+  if (isTuple(v)) return v.items.length > 0;
+  if (typeof v === "string") return v !== "";
+  return false;
 }
 
 export class PineRuntime {
   private slots = new Map<string, SeriesSlot>();
+  /**
+   * Non-fatal script problems, in order.
+   *
+   * A tuple arity mismatch, an unknown identifier, a division by zero: none of these should
+   * abort a backtest, but all of them should be visible. Silence is worse than a warning.
+   */
+  readonly warnings: string[] = [];
+
+  private warn(message: string): void {
+    if (this.warnings.length < 50) this.warnings.push(message);
+  }
   private scalarVar = new Map<string, PineValue>();
   private functions = new Map<string, { params: string[]; body: Node }>();
   private barIndex = 0;
@@ -234,6 +268,25 @@ export class PineRuntime {
         this.assign(node.name, v, node.op);
         return;
       }
+      case "tupleassign": {
+        const v = this.eval(node.value);
+        // A non-tuple on the right is a script bug. Bind NA to every name rather than throwing:
+        // an unhandled exception mid-backtest loses the whole run, and NA shows as an empty
+        // plot, which points at the right line.
+        const items = isTuple(v) ? v.items : [];
+        if (items.length !== node.names.length) {
+          // Arity mismatch is reported through the warning channel, not thrown: Pine scripts
+          // in the wild bind only the values they use.
+          this.warn(
+            `${node.names.length} names but ${items.length} values from the tuple ` +
+            `(${node.names.join(", ")})`,
+          );
+        }
+        node.names.forEach((name, i) => {
+          this.assign(name, items[i] ?? NA, node.op);
+        });
+        return;
+      }
       case "vardecl": {
         // `var` keeps its value across bars; without it the slot is re-initialised.
         const existing = this.slots.get(node.name);
@@ -347,8 +400,8 @@ export class PineRuntime {
       case "string": return node.value;
       case "bool": return node.value;
       case "na": return null;
-      case "ident": return this.readVar(node.name);
-      case "tuple": return toNum(this.eval(node.items[0] ?? { kind: "na" }));
+      case "ident": return this.readVar(node.name) ?? null;
+      case "tuple": return tuple(...node.items.map((i) => this.eval(i)));
       case "binary": return this.evalBinary(node);
       case "unary": {
         const v = this.eval(node.operand);
@@ -437,9 +490,14 @@ export class PineRuntime {
       case "for":
       case "while":
       case "func":
+      case "tupleassign":
+        // a statement, not an expression: it binds names and yields nothing
         this.execStatement(node);
         return null;
     }
+    // Unreachable for a valid Node, but the compiler needs a return and a future node kind
+    // must not silently produce undefined in the middle of a backtest.
+    return null;
   }
 
   private evalBlockValue(block: { statements: Node[] }): PineValue {
@@ -615,7 +673,17 @@ export class PineRuntime {
   }
 
   private doPlot(args: PineValue[], named: Record<string, PineValue>): PineValue {
-    const value = toNum(args[0] ?? NA);
+    // Real Pine refuses to plot a tuple. This runtime accepts it and plots the first item,
+    // because `m = ta.bb(...)` followed by `plot(m)` is a shape that already worked here and
+    // silently returning NA would turn a working script's chart blank.
+    const raw = args[0];
+    let value: number;
+    if (isTuple(raw)) {
+      this.warn("plotted a tuple; showing its first value — use [a, b] = ... to destructure");
+      value = toNum(raw.items[0]);
+    } else {
+      value = toNum(raw ?? NA);
+    }
     const titleNode = named["title"];
     const title = typeof titleNode === "string" ? titleNode : `plot${this.plots.size}`;
     const color = typeof named["color"] === "string" ? named["color"] : undefined;
@@ -771,23 +839,37 @@ export class PineRuntime {
         const fast = period;
         const slow = args.length > 2 ? Math.trunc(toNum(args[2])) : 26;
         const sig = args.length > 3 ? Math.trunc(toNum(args[3])) : 9;
-        const line = this.cachedLine(`macd:${fast}:${slow}:${sig}`,
-          () => macd(this.series, fast, slow, sig).macd);
-        return line[i] ?? NA;
+        const m = macd(this.series, fast, slow, sig);
+        const line = this.cachedLine(`macd:${fast}:${slow}:${sig}`, () => m.macd);
+        const signal = this.cachedLine(`macdsig:${fast}:${slow}:${sig}`, () => m.signal);
+        const hist = this.cachedLine(`macdhist:${fast}:${slow}:${sig}`, () => m.histogram);
+        // Pine order is [macdLine, signalLine, histogram]
+        return tuple(line[i] ?? NA, signal[i] ?? NA, hist[i] ?? NA);
       }
       case "stoch": {
-        const k = period;
-        const d = args.length > 2 ? Math.trunc(toNum(args[2])) : 3;
-        const smooth = args.length > 3 ? Math.trunc(toNum(args[3])) : 3;
-        const line = this.cachedLine(`stochk:${k}:${d}:${smooth}`,
-          () => stochastic(this.series, k, d, smooth).k);
-        return line[i] ?? NA;
+        // ta.stoch(source, high, low, length) — the length is the FOURTH argument, not the
+        // second. Reading `period` here took `high` as the window length: a price around 2000,
+        // so the window never filled and every value came out NaN.
+        const k = args.length > 3 ? Math.trunc(toNum(args[3])) : 14;
+        const d = args.length > 4 ? Math.trunc(toNum(args[4])) : 3;
+        const smooth = args.length > 5 ? Math.trunc(toNum(args[5])) : 3;
+        const st = stochastic(this.series, k, d, smooth);
+        const line = this.cachedLine(`stochk:${k}:${d}:${smooth}`, () => st.k);
+        const dline = this.cachedLine(`stochd:${k}:${d}:${smooth}`, () => st.d);
+        // Pine order is [%K, %D]
+        return tuple(line[i] ?? NA, dline[i] ?? NA);
       }
       case "bb": {
         const mult = args.length > 2 ? toNum(args[2]) : 2;
         const bb = this.cachedBB(period, mult);
-        // Pine returns a tuple; we expose the middle band for single-value use.
-        return bb.middle[i] ?? NA;
+        // Pine order is [middle, upper, lower]. A script that plots the result directly gets
+        // the middle band, because toNum() of a tuple is NA and the plot would be empty —
+        // so single-value use reads the first item explicitly instead.
+        return tuple(
+          bb.middle[i] ?? NA,
+          bb.upper[i] ?? NA,
+          bb.lower[i] ?? NA,
+        );
       }
       case "crossover":
       case "crossunder": {

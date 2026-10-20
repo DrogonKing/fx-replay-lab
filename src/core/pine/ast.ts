@@ -7,7 +7,7 @@
 export type Node =
   | NumberLit | StringLit | BoolLit | NaLit | Ident
   | Tuple | Call | Member | Index | Unary | Binary | Ternary
-  | Assign | VarDecl | IfStmt | ForStmt | WhileStmt | SwitchStmt
+  | Assign | TupleAssign | VarDecl | IfStmt | ForStmt | WhileStmt | SwitchStmt
   | FuncDecl | ExprStmt | Block;
 
 export interface NumberLit { kind: "number"; value: number }
@@ -37,6 +37,20 @@ export interface Unary { kind: "unary"; op: string; operand: Node }
 export interface Binary { kind: "binary"; op: string; left: Node; right: Node }
 export interface Ternary { kind: "ternary"; cond: Node; then: Node; else: Node }
 export interface Assign { kind: "assign"; name: string; op: "=" | ":="; value: Node }
+/**
+ * `[a, b] = ta.bb(close, 20, 2)` — bind several names to the items of a tuple.
+ *
+ * Kept as its own node rather than desugared into two assigns at parse time: a failed
+ * destructure has to report the ARITY mismatch against the source line, and a desugared pair
+ * of assigns loses the fact that they came from one call.
+ */
+export interface TupleAssign {
+  kind: "tupleassign";
+  names: string[];
+  op: "=" | ":=";
+  value: Node;
+}
+
 export interface VarDecl {
   kind: "vardecl";
   name: string;

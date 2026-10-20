@@ -211,6 +211,27 @@ export class Parser {
     if (this.at("op", "=") || this.at("op", ":=")) {
       const op = this.next().value as "=" | ":=";
       const value = this.parseExpr();
+
+      // `[a, b] = f()` — tuple destructuring. Every target must be a plain name: Pine has no
+      // nested patterns, and accepting one here would fail later with a confusing message.
+      if (expr.kind === "tuple") {
+        const names: string[] = [];
+        for (const item of expr.items) {
+          if (item.kind !== "ident") {
+            throw new PineSyntaxError(
+              "tuple destructuring targets must be names", t.line, t.col,
+            );
+          }
+          names.push(item.name);
+        }
+        if (names.length === 0) {
+          throw new PineSyntaxError("empty tuple destructuring", t.line, t.col);
+        }
+        const ta: Node = { kind: "tupleassign", names, op, value };
+        this.consumeLineEnd();
+        return ta;
+      }
+
       if (expr.kind !== "ident") {
         throw new PineSyntaxError("assignment target must be a name", t.line, t.col);
       }
@@ -220,7 +241,6 @@ export class Parser {
     }
 
     const es: ExprStmt = { kind: "expr", expr };
-    // tuple destructuring: [a, b] = ...
     this.consumeLineEnd();
     return es;
   }

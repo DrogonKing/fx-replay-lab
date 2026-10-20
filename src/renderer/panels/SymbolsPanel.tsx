@@ -10,8 +10,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { useI18n } from "../i18n-context.js";
 import { DEFAULT_SYMBOLS } from "../../core/symbol.js";
 import {
-  mergeSymbols, specFromForm, parseSymbols, serialiseSymbols, describeSymbol,
-  validateSymbol,
+  mergeSymbols, specFromForm, parseSymbols, serialiseSymbols,
 } from "../../core/symbol-manager.js";
 import type { SymbolSpec } from "../../core/types.js";
 
@@ -150,6 +149,7 @@ export function SymbolsPanel(): JSX.Element {
         <button data-action="sym-add" onClick={add}>{t("sym.add")}</button>
       </div>
 
+      {!loaded && <p className="msg">{t("sym.loading")}</p>}
       {msg && <p className="msg" data-note="symbols">{msg}</p>}
       <p className="msg">
         {t("sym.demoNote")}
