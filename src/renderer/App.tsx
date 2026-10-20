@@ -37,6 +37,8 @@ import { DrawingOverlay, toData } from "./overlay.js";
 import {
   parseDrawings, serialiseDrawings, workspaceKey,
 } from "../core/persist.js";
+import { TradingSession } from "./trading.js";
+import { TradePanel } from "./panels/TradePanel.js";
 import { DataPanel } from "./panels/DataPanel.js";
 import { StrategyPanel } from "./panels/StrategyPanel.js";
 import { JournalPanel } from "./panels/JournalPanel.js";
@@ -45,7 +47,7 @@ import type { Feed, FeedStatus } from "../core/feed.js";
 import type { CandleSeries, Timeframe } from "../core/types.js";
 
 type IndicatorKind = "SMA" | "EMA" | "BB" | "RSI" | "ADX" | "CCI" | "VWAP" | "SUPERTREND";
-type RailTab = "data" | "indicators" | "strategy" | "journal";
+type RailTab = "data" | "trade" | "indicators" | "strategy" | "journal";
 
 interface IndicatorState {
   id: number;
@@ -85,6 +87,19 @@ export function App(): JSX.Element {
   const [rail, setRail] = useState<RailTab>("data");
   const [offline, setOffline] = useState(true);
   const [symbolId, setSymbolId] = useState("GC=F");
+
+  /**
+   * Trading session, rebuilt when the symbol changes.
+   *
+   * The engine is constructed with the symbol's spec (contract size, spread, lot
+   * step), so reusing one across a symbol switch would price gold with EURUSD's
+   * contract size. Rebuilding discards open positions, which is correct: they belong
+   * to the old instrument.
+   */
+  const [session, setSession] = useState(() => new TradingSession("XAUUSD"));
+  useEffect(() => {
+    setSession(new TradingSession(symbolId.startsWith("GC=F") ? "XAUUSD" : symbolId));
+  }, [symbolId]);
   const [feedStatus, setFeedStatus] = useState<FeedStatus | null>(null);
   const [loading, setLoading] = useState(false);
   const [tool, setTool] = useState<DrawingKind | null>(null);
@@ -449,6 +464,43 @@ export function App(): JSX.Element {
     else repaint();
   }, [pointerCtx, repaint, applyDrawings]);
 
+  /**
+   * Price of the newest revealed bar, used by the trade panel.
+   *
+   * Taken from the BASE series rather than the aggregated view: the engine checks
+   * stops against the bar the user is actually watching, which during replay is the
+   * forming higher-timeframe candle.
+   */
+  const currentPrice = useMemo(() => {
+    if (base.length === 0) return 0;
+    const i = Math.min(revealed, base.length) - 1;
+    return i >= 0 ? base.close[i]! : 0;
+  }, [base, revealed]);
+
+  /**
+   * Advance the trading engine on every newly revealed bar.
+   *
+   * Without this, a stop placed during replay would never trigger — the engine only
+   * checks SL/TP inside onBar(), and nothing was calling it. Each call can file
+   * journal entries, which the session buffers.
+   */
+  const lastBarRef = useRef<number>(-1);
+  useEffect(() => {
+    if (base.length === 0 || revealed <= 0) return;
+    const i = Math.min(revealed, base.length) - 1;
+    if (i === lastBarRef.current) return;
+    lastBarRef.current = i;
+    const bar = {
+      time: base.time[i]!,
+      open: base.open[i]!,
+      high: base.high[i]!,
+      low: base.low[i]!,
+      close: base.close[i]!,
+      volume: base.volume[i]!,
+    };
+    session.onBar(bar);
+  }, [base, revealed, session]);
+
   // Keep the overlay's queued shapes in sync with the model. Every mutation bumps
   // `revision`, so this is the single place that pushes drawings to the canvas.
   useEffect(() => {
@@ -640,7 +692,7 @@ export function App(): JSX.Element {
 
       <aside className="panel">
         <nav className="rail-tabs">
-          {(["data", "indicators", "strategy", "journal"] as RailTab[]).map((t) => (
+          {(["data", "trade", "indicators", "strategy", "journal"] as RailTab[]).map((t) => (
             <button
               key={t}
               className={rail === t ? "rail-tab active" : "rail-tab"}
@@ -674,6 +726,17 @@ export function App(): JSX.Element {
               value={revealed} onChange={(e) => setRevealed(Number(e.target.value))}
             />
           </>
+        )}
+
+        {rail === "trade" && (
+          <TradePanel
+            session={session}
+            price={currentPrice}
+            contractSize={session.specRef.contractSize}
+            lotStep={session.specRef.lotStep}
+            minLot={session.specRef.lotMin}
+            maxLot={session.specRef.lotMax}
+          />
         )}
 
         {rail === "indicators" && (
@@ -713,7 +776,7 @@ export function App(): JSX.Element {
           <StrategyPanel series={view} account={ACCOUNT} symbolId="XAUUSD" />
         )}
 
-        {rail === "journal" && <JournalPanel />}
+        {rail === "journal" && <JournalPanel session={session} />}
 
         {status && <p className="status">{status}</p>}
 

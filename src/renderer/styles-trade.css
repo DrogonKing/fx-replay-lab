@@ -1,0 +1,90 @@
+
+/* ================= trade panel ================= */
+
+.trade-panel { padding: 8px 10px; }
+
+.order-form {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  margin: 8px 0;
+}
+
+.order-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 10px;
+  color: #787b86;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.order-form input {
+  background: #1e222d;
+  border: 1px solid #363a45;
+  border-radius: 4px;
+  color: #d1d4dc;
+  font: inherit;
+  font-size: 12px;
+  padding: 4px 6px;
+  min-width: 0;
+}
+
+.order-form input:focus {
+  outline: none;
+  border-color: #f0b90b88;
+}
+
+.buy-btn,
+.sell-btn {
+  flex: 1;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 7px 0;
+  cursor: pointer;
+  color: #0d1117;
+}
+
+.buy-btn {
+  background: #26a69a;
+}
+
+.sell-btn {
+  background: #ef5350;
+  color: #fff;
+}
+
+.buy-btn:hover { background: #2eb9ab; }
+.sell-btn:hover { background: #f2635f; }
+
+.buy-btn:disabled,
+.sell-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.warn-box {
+  background: #3a2a1a;
+  border: 1px solid #f0b90b66;
+  border-radius: 4px;
+  color: #f0b90b;
+  font-size: 11px;
+  padding: 6px 8px;
+  margin: 8px 0;
+  line-height: 1.4;
+}
+
+.row-del {
+  background: transparent;
+  border: none;
+  color: #787b86;
+  cursor: pointer;
+  font-size: 11px;
+  padding: 0 4px;
+}
+
+.row-del:hover { color: #ef5350; }

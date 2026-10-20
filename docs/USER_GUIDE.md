@@ -91,6 +91,46 @@ replay position, so you cannot accidentally see what comes next.
 
 Indicators: SMA, EMA, Bollinger, RSI, ADX, CCI, VWAP, Supertrend.
 
+## Trading by hand
+
+The **TRADE** tab places market orders on the same account the backtester uses.
+
+| Field | Meaning |
+|---|---|
+| lots | position size; must be within the symbol's min/max and on the lot step |
+| SL (pts) | stop distance in price points, not a price. 10 on gold = $10 of price |
+| TP (pts) | target distance, same units |
+| tags | comma-separated, saved onto the journal entry |
+
+The panel shows **risk / reward** in account money and the implied R before you click,
+so you are never guessing what a stop costs:
+
+```
+0.10 lots, SL 10 pts, gold (contract 100)  ->  risk $100
+TP 20 pts                                  ->  reward $200  (1:2.00)
+```
+
+Buy fills at ask, sell at bid. An order the account cannot margin is **refused** with
+the required and available numbers rather than silently opening.
+
+**Stops are checked on every bar as the replay advances**, using the same rule as the
+backtester: SL before TP within a bar, gap-through fills at the open. If these never
+fire, trading halts — equity has reached zero.
+
+### Closed trades go to the journal automatically
+
+Every close — manual, stop, target, stop-out — creates a journal entry carrying:
+
+- the symbol, side, lots, entry and exit prices and times
+- the realised P/L **including commission**
+- the money that was actually at risk at entry, so the R multiple is real
+- an automatic tag for why it closed: `sl`, `tp`, `manual`, `stop-out`
+- any tags you typed when opening
+
+A trailing stop makes the closing stop price different from the initial risk, so the
+risk is captured at entry rather than inferred later. A position opened with no stop
+records risk 0 and shows "—" instead of inventing an R.
+
 ## Strategy tester
 
 The **STRATEGY** tab runs JavaScript against the loaded series. The account engine

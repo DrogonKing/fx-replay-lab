@@ -17,6 +17,7 @@ bash scripts/pine-smoke.sh            # Pine parse+evaluate through IPC
 bash scripts/draw-smoke.sh            # real pointer events paint, undo repaints
 bash scripts/persist-smoke.sh         # drawings survive kill -9 + relaunch
 bash scripts/journal-smoke.sh         # journal survives kill -9 + relaunch
+bash scripts/trade-smoke.sh           # trade -> SL -> journal entry, end to end
 bash scripts/screenshot.sh /tmp/a.png # capture the UI
 ```
 
@@ -87,7 +88,10 @@ BAD PINE: "unsupported ta.notReal() (bar 0)"  ← precise, not silent
 - [x] Hotkeys Space / → / Ctrl+Z
 - [ ] Order types: limit, stop, stop-limit, OCO, break-even
 - [ ] Swap accrual, slippage, margin call threshold
-- [ ] Positions table UI (engine supports it; no table yet)
+- [x] Positions table UI with per-row close and close-all
+- [x] Margin check: an order that cannot be funded is refused with the numbers
+- [x] Trading halts on stop-out and the panel says so
+- [x] Closed trades filed to the journal automatically, tagged with the exit reason
 - [ ] SL/TP drag on chart
 - [ ] Equity curve UI
 - [ ] Risk calculator UI
@@ -147,7 +151,9 @@ BAD PINE: "unsupported ta.notReal() (bar 0)"  ← precise, not silent
 - [x] Row-level delete and "clear samples"
 - [x] Sample rows are explicitly tagged `demo` and the UI warns they are in the stats
 - [ ] R-multiple calendar heatmap, PDF export
-- [ ] Automatic capture of closed trades from the account engine
+- [x] Automatic capture of closed trades from the account engine (reason-tagged,
+      with money-at-risk captured at entry so R is real)
+- [ ] R-multiple calendar heatmap
 
 ## Phase 9 — Polish and release
 - [x] Offline verification (static + CSP + main guards)

@@ -4,6 +4,7 @@ import { App } from "./App.js";
 import "./styles.css";
 import "./styles-panels.css";
 import "./styles-draw.css";
+import "./styles-trade.css";
 
 const el = document.getElementById("root");
 if (!el) throw new Error("#root missing");

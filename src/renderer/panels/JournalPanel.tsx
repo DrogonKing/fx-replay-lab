@@ -9,8 +9,9 @@
  */
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
-  parseJournal, serialiseJournal, type JournalEntry as PersistedEntry,
+  parseJournal, serialiseJournal,
 } from "../../core/persist.js";
+import { mergeNewEntries } from "../../core/trade-to-journal.js";
 
 export interface JournalEntry {
   id: string;
@@ -121,7 +122,18 @@ interface JournalBridge {
   }>;
 }
 
-export function JournalPanel(): JSX.Element {
+interface Props {
+  /** when provided, closed trades arrive here automatically */
+  session?: {
+    takePending: () => Array<{
+      id: string; symbol: string; side: "buy" | "sell"; lots: number;
+      entryTime: number; exitTime: number; entryPrice: number; exitPrice: number;
+      pnl: number; risk: number; tags: string[]; notes: string;
+    }>;
+  };
+}
+
+export function JournalPanel({ session }: Props = {}): JSX.Element {
   const [entries, setEntries] = useState<JournalEntry[]>([]);
   const [tagInput, setTagInput] = useState("");
   const [note, setNote] = useState("");
@@ -144,7 +156,12 @@ export function JournalPanel(): JSX.Element {
     void api.loadJournal().then((res) => {
       if (cancelled) return;
       const parsed = parseJournal({ entries: res.value });
-      setEntries(parsed.value);
+
+      // MERGE, do not replace. The drain effect above may already have pulled a
+      // trade that closed while this request was in flight; replacing state would
+      // silently discard it, and since takePending() had already emptied the
+      // session buffer the entry would be gone for good.
+      setEntries((current) => mergeNewEntries(parsed.value, current).merged);
       hydrated.current = true;
       if (res.rejected.length > 0 || parsed.rejected.length > 0) {
         setNote(
@@ -158,6 +175,27 @@ export function JournalPanel(): JSX.Element {
     });
     return () => { cancelled = true; };
   }, []);
+
+  /**
+   * Pull any trades the session has filed.
+   *
+   * drained on every mount and on a short poll while the panel is open. A poll is
+   * deliberate: the write happens inside the replay tick, which is not a React
+   * event, and a subscription would need the panel to outlive tab switches.
+   */
+  useEffect(() => {
+    if (!session) return;
+    const pull = (): void => {
+      const pending = session.takePending();
+      if (pending.length === 0) return;
+      setEntries((prev) => mergeNewEntries(prev, pending).merged);
+    };
+    pull();
+    // 400 ms: fast enough that the journal looks live while stepping the replay,
+    // slow enough not to re-render the panel constantly.
+    const timer = window.setInterval(pull, 400);
+    return () => window.clearInterval(timer);
+  }, [session]);
 
   useEffect(() => {
     if (!hydrated.current) return;

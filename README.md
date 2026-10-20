@@ -23,7 +23,7 @@ so "no network" is structural rather than a flag someone can forget.
 ## Verified state
 
 ```
-373 unit tests, 17 files ..................... pass
+410 unit tests, 19 files ..................... pass
 strict typecheck (noUncheckedIndexedAccess) ... clean
 offline verification ......................... PASS
 CI config validation ......................... PASS
@@ -61,8 +61,14 @@ Those backtest numbers are a **negative result for a plain EMA(9/21) crossover o
   Elliott, head & shoulders, harmonics), forecast and position tools with R multiple
   and money-at-risk, 10 annotation types, measure. Canvas overlay, undo/redo, drag to
   move, verified by real pointer events. See `docs/DRAWING-TOOLS.md`.
+- **Manual trading**: order form with lot/SL/TP/tags, risk-and-reward preview in money,
+  margin check, open-positions table with per-row close, live equity and floating P/L,
+  stop-out halt. Runs on the same `AccountEngine` as the backtester, so a strategy that
+  shows a profit and a hand-placed trade are priced identically.
 - **Journal**: entries with tags, R multiples, per-tag and per-month analytics, CSV
-  export, row delete.
+  export, row delete. **Closed trades are filed automatically** and tagged with the exit
+  reason (`sl`, `tp`, `manual`, `stop-out`); money-at-risk is captured at entry so the R
+  multiple is real and not back-derived from a trailed stop.
 - **Persistence**: drawings and journal are stored in SQLite and restored on launch.
   Drawings are keyed by `symbol::timeframe`, autosaved on a debounce, and validated at
   a single boundary — proven by drawing, inspecting the file, `kill -9`, relaunching
@@ -74,8 +80,8 @@ Those backtest numbers are a **negative result for a plain EMA(9/21) crossover o
 
 Stated plainly, because a checklist that hides gaps is worse than no checklist:
 
-- Order types beyond market (limit/stop/OCO), swap accrual, margin-call threshold.
-- Journal entries are **manual**: closed positions are not captured automatically.
+- Order types beyond market (limit/stop/OCO), swap accrual, margin-call **threshold**
+  (stop-out at zero equity works; a broker-style margin call warning does not).
 - News calendar, session shading.
 - Pine: no `request.security`, no `label`/`line`/`box`, no tuple destructuring, no
   `import`.
@@ -105,6 +111,7 @@ bash scripts/pine-smoke.sh         # Pine through IPC
 bash scripts/draw-smoke.sh         # real pointer events paint; undo repaints
 bash scripts/persist-smoke.sh      # drawings survive kill -9 + relaunch
 bash scripts/journal-smoke.sh      # journal survives kill -9 + relaunch
+bash scripts/trade-smoke.sh        # trade -> SL fires -> journal entry, end to end
 ```
 
 ## Docs

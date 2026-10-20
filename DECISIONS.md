@@ -347,3 +347,68 @@ directly (`shapes=2 kinds=['hline','rectangle']`), `kill -9`s the app, relaunche
 asserts `railCount: "2", paintedPixels: 4034`. `scripts/journal-smoke.sh` does the
 same for two journal rows and confirms `trades2, net P/L200` after the restart.
 `tests/persist.test.ts` round-trips every shape kind and every corrupt-input case.
+
+
+---
+
+## ADR-011: Manual trading through a session wrapper, and how R gets its denominator
+
+**Decision.** `src/renderer/trading.ts` wraps `AccountEngine` in a `TradingSession`
+that (a) keeps the *initial* stop distance per position, (b) files a journal entry for
+every closed trade, and (c) is advanced by the replay tick via `onBar`.
+
+**Why a wrapper at all.** The engine is pure and shared with the backtester, which is
+correct (ADR-002). But two things it legitimately does not know are needed for a
+journal:
+
+1. **The stop distance at entry.** A `Trade` stores `sl` as the price the stop had
+   moved to when the position closed. The R multiple needs the distance that was at
+   risk when it *opened*. Trailing stops make these different numbers, so the value
+   cannot be recovered after the fact — it has to be captured in `open()`.
+2. **The user's tags.** Tags are intent recorded at entry, not something the engine
+   deals in.
+
+**Risk of 0, never a guessed R.** If a position was opened without a stop, the entry
+records `risk: 0` and the journal renders "—". Inventing a denominator would produce a
+confident-looking R that means nothing.
+
+**The engine must be advanced, and it was not.** Nothing called `engine.onBar()`, so a
+stop placed during replay would never have triggered — the position would sit open
+forever while the chart moved past it. The tick is driven from the revealed bar index
+in `App.tsx`, and `onBar` is the only place SL/TP are checked, which matches how the
+backtester runs the same engine.
+
+**Rejection of unfundable orders.** `open()` refuses an order whose required margin
+exceeds free margin. Letting it through would produce negative free margin and an
+equity curve that lies about the account's health.
+
+**The bug this produced: a hydrate/drain race that destroyed a trade.** The journal
+panel drained the session's pending entries on mount, then the SQLite hydration
+resolved and called `setEntries(stored)` — replacing state and discarding the trade
+that had just been drained. Because `takePending()` had already emptied the buffer, the
+entry was not merely hidden, it was **gone**: the panel showed zero rows and the
+database had zero rows while `TradePanel` displayed "Closed (1)".
+
+```
+1. place a trade and step:   {"openRows":1,"sections":["Trade","Closed (1)"]}
+2. journal db right now:     {"count":0}
+3. after opening the tab:    {"domRows":0,"dbCount":0}
+```
+
+The fix is that hydration **merges** into current state instead of replacing it:
+`setEntries((current) => mergeNewEntries(parsed.value, current).merged)`. Any
+load-then-mutate flow needs this shape; "replace with what the server had" is only
+correct when nothing can mutate in between.
+
+**Evidence.** `scripts/trade-smoke.sh`: places a buy with a 1-point stop in the real
+app, steps 40 bars, and asserts the journal gained a row —
+`XAUUSD buy lots=0.1 pnl=-10.30 risk=10.00 tags=['sl','auto-test']` — with
+`trades1, net P/L -10, win rate 0.0%` in the panel and one row in SQLite.
+`tests/trade-to-journal.test.ts` (18) and `tests/trading-session.test.ts` (19) cover
+the mapping, the risk capture, duplicate suppression, and the stop-out halt.
+
+**A stale-process pitfall worth recording.** The smoke scripts used fixed CDP ports.
+When a previous `electron` survived a `kill -9` of its `xvfb-run` wrapper, the next run
+attached to the **stale** app: the log said `Cannot start http server for devtools`, and
+every assertion measured the old bundle while looking perfectly healthy. The scripts now
+`pkill` leftovers and pick a random free port.
