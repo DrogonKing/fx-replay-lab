@@ -490,6 +490,9 @@ export function App(): JSX.Element {
           entryPrice: p.entryPrice, sl: p.sl, tp: p.tp, commission: p.commission,
         })),
         pendingOrders: session.snapshot().pendingOrders.length,
+        balance: session.snapshot().balance,
+        equity: session.snapshot().equity,
+        freeMargin: session.snapshot().freeMargin,
       }),
       setLevel: (id: number, kind: "sl" | "tp", price: number) =>
         session.setLevel(id, kind, price),
@@ -1087,6 +1090,7 @@ export function App(): JSX.Element {
             lotStep={session.specRef.lotStep}
             minLot={session.specRef.lotMin}
             maxLot={session.specRef.lotMax}
+            spec={session.specRef}
           />
         )}
 

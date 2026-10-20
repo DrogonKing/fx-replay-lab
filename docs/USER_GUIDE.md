@@ -213,6 +213,28 @@ be copied into a broker statement or a spreadsheet and still work.
 Known gap: validation messages produced by the engine (for example "buy limit 2050 is above
 the market") are still English inside the Persian interface.
 
+### Sizing by risk instead of by lots
+
+Tick **size by risk** and enter a percentage. The lots field becomes read-only and shows the
+computed size.
+
+```
+balance $9,867 · risk 1% · stop 500 points on gold
+  = $98.67 at risk, $500 per lot
+  = 0.1973 lots  ->  0.19 lots
+```
+
+It rounds **down**, always. Rounding up would risk more than you asked for, which is the one
+thing a risk tool must not do.
+
+If your balance is too small for the stop you want, the size shows **—** and Buy/Sell are
+disabled with the reason:
+
+> the smallest trade (0.01 lots) would risk 5.00 = 0.05% of the balance, more than the 0.001%
+> asked for
+
+Untick it to go back to typing lots yourself.
+
 ### Closing the app with a trade open
 
 Your position survives. Balance, open positions, pending orders (including OCO pairs),

@@ -5,10 +5,12 @@
  * used it, but the renderer had no way to place a trade. Closing a position here
  * files it to the journal automatically (see renderer/trading.ts).
  */
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import type { TradingSession, SessionSnapshot } from "../trading.js";
 import type { Side } from "../../core/types.js";
 import { useI18n } from "../i18n-context.js";
+import { planRiskFromPoints } from "../../core/risk-sizing.js";
+import type { SymbolSpec } from "../../core/types.js";
 
 interface Props {
   session: TradingSession;
@@ -21,11 +23,13 @@ interface Props {
   lotStep: number;
   minLot: number;
   maxLot: number;
+  /** the session's own spec, so risk sizing uses the same digits/leverage as the engine */
+  spec: SymbolSpec;
   onFiled?: (count: number) => void;
 }
 
 export function TradePanel({
-  session, price, contractSize, lotStep, minLot, maxLot, onFiled, blackout,
+  session, price, contractSize, lotStep, minLot, maxLot, spec, onFiled, blackout,
 }: Props): JSX.Element {
   const { t } = useI18n();
   const [snap, setSnap] = useState<SessionSnapshot>(() => session.snapshot());
@@ -41,6 +45,9 @@ export function TradePanel({
   const [beR, setBeR] = useState("0");
   const [trailMode, setTrailMode] = useState<"off" | "distance" | "extreme" | "atr">("off");
   const [trailValue, setTrailValue] = useState("5");
+  /** sizing mode: raw lots, or lots derived from a risk percentage */
+  const [sizeByRisk, setSizeByRisk] = useState(false);
+  const [riskPct, setRiskPct] = useState("1");
 
   useEffect(() => session.subscribe(setSnap), [session]);
 
@@ -50,10 +57,42 @@ export function TradePanel({
     session.setPrice(price, Math.floor(Date.now() / 1000));
   }, [price, session]);
 
-  const lotsNum = Number(lots);
   const slNum = Number(slPts);
   const tpNum = Number(tpPts);
-  const lotsValid = Number.isFinite(lotsNum) && lotsNum >= minLot && lotsNum <= maxLot;
+
+  /**
+   * Risk-based sizing.
+   *
+   * Computed from the LIVE balance and free margin, so the size shrinks as the account does.
+   * When the plan refuses (the minimum lot would over-risk), `lots` becomes empty and the
+   * Buy/Sell buttons are disabled — placing the trade anyway would risk more than asked,
+   * which is the one thing a risk tool must not do.
+   */
+  const riskPlan = useMemo(() => {
+    if (!sizeByRisk) return null;
+    return planRiskFromPoints(
+      {
+        balance: snap.balance,
+        riskPercent: Number(riskPct),
+        price,
+        leverage: spec.leverage,
+        freeMargin: snap.freeMargin,
+      },
+      Number(slPts),
+      spec,
+    );
+  }, [sizeByRisk, snap.balance, snap.freeMargin, riskPct, slPts, price, spec]);
+
+  // In risk mode the lots field displays the computed size and is read-only: letting the
+  // user type over it would let them think they are risk-sized when they are not.
+  const effectiveLots = riskPlan
+    ? (riskPlan.lots > 0 ? riskPlan.lots : 0)
+    : Number(lots);
+
+  const lotsNum = effectiveLots;
+  const lotsValid = riskPlan
+    ? riskPlan.lots > 0
+    : Number.isFinite(lotsNum) && lotsNum >= minLot && lotsNum <= maxLot;
   const riskMoney = Number.isFinite(slNum) && slNum > 0 && lotsValid
     ? slNum * lotsNum * contractSize
     : 0;
@@ -155,18 +194,51 @@ export function TradePanel({
         <label>
           {t("trade.lots")}
           <input
-            value={lots}
+            data-field="lots"
+            value={sizeByRisk ? (riskPlan && riskPlan.lots > 0 ? riskPlan.lots.toFixed(2) : "—") : lots}
             onChange={(e) => setLots(e.target.value)}
+            inputMode="decimal"
+            readOnly={sizeByRisk}
+            title={sizeByRisk ? t("risk.computed") : undefined}
+          />
+        </label>
+        <label>
+          {t("risk.mode")}
+          <input
+            data-field="size-by-risk"
+            type="checkbox"
+            checked={sizeByRisk}
+            onChange={(e) => setSizeByRisk(e.target.checked)}
+          />
+        </label>
+        {sizeByRisk && (
+          <label>
+            {t("risk.percent")}
+            <input
+              data-field="risk-percent"
+              value={riskPct}
+              onChange={(e) => setRiskPct(e.target.value)}
+              inputMode="decimal"
+            />
+          </label>
+        )}
+        <label>
+          {t("trade.sl")}
+          <input
+            data-field="sl"
+            value={slPts}
+            onChange={(e) => setSlPts(e.target.value)}
             inputMode="decimal"
           />
         </label>
         <label>
-          {t("trade.sl")}
-          <input value={slPts} onChange={(e) => setSlPts(e.target.value)} inputMode="decimal" />
-        </label>
-        <label>
           {t("trade.tp")}
-          <input value={tpPts} onChange={(e) => setTpPts(e.target.value)} inputMode="decimal" />
+          <input
+            data-field="tp"
+            value={tpPts}
+            onChange={(e) => setTpPts(e.target.value)}
+            inputMode="decimal"
+          />
         </label>
         <label>
           {t("trade.tags")}
@@ -218,6 +290,26 @@ export function TradePanel({
         </b>
       </div>
 
+      {sizeByRisk && riskPlan && (
+        <>
+          <div className="kv" data-kv="at-risk">
+            <span>{t("risk.atRisk")}</span>
+            <b className={riskPlan.overBudget ? "down" : ""}>
+              {riskPlan.riskMoney.toFixed(2)} ({riskPlan.actualRiskPercent.toFixed(2)}%)
+            </b>
+          </div>
+          {riskPlan.reason && (
+            <p className={riskPlan.overBudget ? "warn-box" : "msg"}>{riskPlan.reason}</p>
+          )}
+          {riskPlan.lots > 0 && riskPlan.margin > 0 && (
+            <div className="kv">
+              <span>{t("trade.margin")}</span>
+              <b>{riskPlan.margin.toFixed(2)}</b>
+            </div>
+          )}
+        </>
+      )}
+
       <div className="be-row">
         {t("trade.trail")}
         <select
@@ -267,15 +359,15 @@ export function TradePanel({
         <button
           className="buy-btn"
           onClick={() => place("buy")}
-          disabled={snap.stoppedOut || blackout?.blocked}
+          disabled={snap.stoppedOut || blackout?.blocked || !lotsValid}
           title="Buy at ask"
         >
-          ▲ {t("trade.buy")} {lotsValid ? lotsNum.toFixed(2) : ""}
+          <span data-action="buy">▲ {t("trade.buy")} {lotsValid ? lotsNum.toFixed(2) : ""}</span>
         </button>
         <button
           className="sell-btn"
           onClick={() => place("sell")}
-          disabled={snap.stoppedOut || blackout?.blocked}
+          disabled={snap.stoppedOut || blackout?.blocked || !lotsValid}
           title="Sell at bid"
         >
           ▼ {t("trade.sell")} {lotsValid ? lotsNum.toFixed(2) : ""}

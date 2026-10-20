@@ -776,3 +776,47 @@ behind an exit handler. Surviving SIGKILL proves the state was written when it c
 SIGKILL -> row on disk `balance 9999.40 positions 1 pending 1 revealed 2000` -> relaunch ->
 `positions 1, lots 0.2, side buy, SL 1951.91`, notice `restored balance 9999.40 · 1 open · 1
 pending` -> dismiss -> `0` rows. 722 tests across 29 files.
+
+
+---
+
+## ADR-019: Risk sizing rounds down, and refuses rather than over-risking
+
+**Decision.** `planRisk()` floors the computed size to the lot step and returns `lots: 0` with
+`overBudget: true` when even the minimum lot would exceed the budget. It never rounds up.
+
+**Why.** `lotsForRisk()` in `symbol.ts` — written earlier and correct in its normal range —
+returns `lotMin` when the computed size is below it. That silently risks more than the user
+asked: on a $100 account with a 50-point gold stop, a request for 0.1% ($0.10) produces the
+minimum lot, which risks **$50 = 50%**. A tool whose entire purpose is "risk this much" must not
+do that. The comparison is asserted in the tests so the divergence is deliberate, not accidental:
+
+```
+lotsForRisk(100, 0.1, 50, GOLD)  -> 0.01   (over-risks by 500x)
+planRisk(... same inputs ...)    -> 0      (refuses, with the reason)
+```
+
+**The refusal carries the arithmetic**, so the UI can say "the smallest trade would risk 5.00 =
+0.05%, more than the 0.001% asked for" instead of a bare "invalid size". A refusal that explains
+itself is a feature; one that does not reads as a bug.
+
+**The buttons are disabled in that state.** First implementation left them enabled and let
+`place()` refuse. That is the worse of the two: a clickable button that refuses looks broken, while
+a disabled button under a warning reads as "this trade is too big for this account".
+
+**Margin may only shrink the size, never grow it.** The risk budget decides first; free margin is
+then applied as an upper bound. The reverse order would let margin availability "allow" a size the
+user never asked to risk.
+
+**Units: one point is `10^-digits`.** The first version used `10^(-digits+1)`, ten times too large,
+which would have sized every risk-based trade ten times over — a $500 risk on a $100 budget. Caught
+by a test that asserted `100 points = 1.00` on gold and got `10.00`, before any of it reached the
+UI.
+
+**The lots field is read-only in risk mode.** Letting the user type over a computed size would let
+them believe they are risk-sized when they are not, which is the same lie by a different route.
+
+**Evidence.** `scripts/risk-smoke.sh`: controls present; `1% + 500 points` on a live balance of
+$9,867 gives `0.1973 -> 0.19`; the placed order is `0.19` and matches the computed expectation;
+`0.001%` gives `lots "—"` with `buyDisabled true` and the arithmetic in the warning; and the size
+scales `0.5% -> 0.09, 1% -> 0.19, 2% -> 0.39`. 749 tests across 30 files.

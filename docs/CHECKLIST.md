@@ -17,6 +17,7 @@ bash scripts/pine-smoke.sh            # Pine parse+evaluate through IPC
 bash scripts/draw-smoke.sh            # real pointer events paint, undo repaints
 bash scripts/persist-smoke.sh         # drawings survive kill -9 + relaunch
 bash scripts/live-session-smoke.sh    # open position survives SIGKILL, restore, dismiss
+bash scripts/risk-smoke.sh            # risk sizing, refusal, scaling, placed order matches
 bash scripts/journal-smoke.sh         # journal survives kill -9 + relaunch
 bash scripts/trade-smoke.sh           # trade -> SL -> journal entry, end to end
 bash scripts/orders-smoke.sh          # limit fills, invalid side refused, OCO pair
@@ -115,7 +116,13 @@ BAD PINE: "unsupported ta.notReal() (bar 0)"  ← precise, not silent
       is skipped so a restored position is not stopped out on arrival
 - [x] Positions table reads P/L from the engine (one source of truth)
 - [ ] Equity curve UI
-- [ ] Risk calculator UI
+- [x] Risk sizing: percentage of balance + stop distance -> lots, rounded DOWN to the
+      lot step; refuses with the arithmetic when the minimum lot would over-risk, and
+      disables Buy/Sell in that state
+- [x] Points/price conversion in one place (one point = 10^-digits), with `maxStopPoints`
+      answering "how wide can my stop be at this risk"
+- [ ] Whole-book risk guard (three 1% positions are each 1%; nothing warns the total is 3%)
+- [ ] Per-symbol risk presets
 
 ## Phase 4 — Indicators
 - [x] Engine: pure, NaN-safe, O(1) per bar
