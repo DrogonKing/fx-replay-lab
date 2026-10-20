@@ -63,19 +63,22 @@ def make_icon() -> Image.Image:
     d = ImageDraw.Draw(img)
 
     # --- plot area suggestion: 3 horizontal lines only ---------------------
-    # Few and faint on purpose: at icon sizes any more becomes noise that
-    # competes with the candles.
-    for y in (150, 268, 386):
-        d.line([(56, y), (SIZE - 56, y)], fill=GRID + (255,), width=3)
+    # Few and faint on purpose: at icon sizes any more becomes noise that competes
+    # with the candles. Inset so an Android adaptive-icon crop cannot clip them.
+    for y in (162, 276, 390):
+        d.line([(84, y), (SIZE - 84, y)], fill=GRID + (255,), width=3)
 
     # --- candles -----------------------------------------------------------
-    # Four bars, rising, evenly spaced, with a 19% safe margin left and right.
+    # COMPRESSED series: the three history bars nearly touch (72px pitch on a 74px
+    # body) so they read as one continuous price ribbon rather than a bar chart,
+    # with ONE deliberate gap before the live bar. The gap is the signal.
+    # The group is shifted left so the mass is centred instead of right-heavy.
     # (cx, body_top, body_bottom, wick_top, wick_bottom, colour)
     candles = [
-        (140, 300, 372, 262, 408, RED),
-        (232, 232, 320, 196, 356, TEAL),
-        (324, 250, 336, 214, 380, RED),
-        (416, 130, 236, 96, 286, GOLD),
+        (112, 302, 372, 264, 406, RED),   # lifted off the bottom gridline
+        (184, 236, 322, 200, 356, TEAL),
+        (256, 252, 338, 216, 380, RED),
+        (360, 132, 238, 100, 282, GOLD),  # live bar, one gap to the right
     ]
 
     for cx, top, bottom, wt, wb, colour in candles:
@@ -86,6 +89,20 @@ def make_icon() -> Image.Image:
             radius=12,
             fill=colour + (255,),
         )
+
+    # --- live price line ---------------------------------------------------
+    # A horizontal line at the live bar's close running to the right edge is the
+    # convention TradingView and Binance actually use for "this is the current
+    # price". Without it the gold bar only *implies* live; with it the icon states
+    # it, and it still reads at 24px because it is a straight 6px stroke.
+    liveClose = 200
+    d.line([(360, liveClose), (SIZE - 74, liveClose)], fill=GOLD + (190,), width=6)
+    # a small tag at the end, like the price axis label
+    d.rounded_rectangle(
+        [SIZE - 74, liveClose - 17, SIZE - 30, liveClose + 17],
+        radius=8,
+        fill=GOLD + (255,),
+    )
 
     return img
 
