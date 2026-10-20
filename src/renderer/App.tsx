@@ -512,9 +512,9 @@ export function App(): JSX.Element {
 
         <div className="grow" />
 
-        {tool && (
-          <span className="active-tool">{TOOL_LABELS[tool] ?? tool}</span>
-        )}
+        {/* A readout, not a control: the tool is chosen in the rail. Showing the
+            active tool name here removes any doubt about what a click will draw. */}
+        {tool && <span className="active-tool">{TOOL_LABELS[tool] ?? tool}</span>}
       </header>
 
       <DrawingToolbar

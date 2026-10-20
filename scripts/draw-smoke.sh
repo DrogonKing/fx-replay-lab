@@ -48,6 +48,12 @@ console.log("RAIL:", await evalJs(`JSON.stringify({
   buttons: document.querySelectorAll('.draw-rail .tool-btn').length,
   groups: document.querySelectorAll('.draw-rail .tool-group').length,
   canvas: !!document.querySelector('.draw-canvas'),
+  separators: document.querySelectorAll('.draw-rail .rail-sep').length,
+  separatorsVisible: [...document.querySelectorAll('.draw-rail .rail-sep')]
+    .filter(s => { const r = s.getBoundingClientRect();
+                   return r.height >= 1 && r.width >= 20; }).length,
+  railScrollH: document.querySelector('.draw-rail').scrollHeight,
+  railClientH: document.querySelector('.draw-rail').clientHeight,
 })`));
 
 // 2. Open the Lines flyout and confirm tools are listed.
@@ -135,6 +141,16 @@ console.log("MORE_SHAPES:", await evalJs(`(async () => {
   for (let i = 3; i < d.length; i += 4) if (d[i] > 8) opaque++;
   return JSON.stringify({ created: results, paintedPixels: opaque, count: document.querySelector('.rail-count')?.textContent });
 })()`));
+
+// 4b. Screenshot with everything drawn (the undo step below removes it).
+{
+  const shot = await send("Page.captureScreenshot", { format: "png" });
+  if (shot.result?.data) {
+    const { writeFileSync } = await import("node:fs");
+    writeFileSync("/tmp/fx-drawings-all.png", Buffer.from(shot.result.data, "base64"));
+    console.log("screenshot /tmp/fx-drawings-all.png (all shapes)");
+  }
+}
 
 // 5. Undo twice and confirm the painting shrinks (proves undo repaints).
 console.log("UNDO:", await evalJs(`(async () => {

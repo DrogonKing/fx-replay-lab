@@ -87,12 +87,21 @@
 .flyout-item.active { background: #2f3644; color: #f0b90b; }
 .fi-icon { width: 16px; text-align: center; color: #9aa0ac; }
 
+/* Group dividers. Near-invisible at #2a2e39 on a #1a1e29 rail (1px, low
+   contrast) which made nine flyout groups read as one flat list. */
 .rail-sep {
-  width: 22px;
+  width: 28px;
   height: 1px;
-  background: #2a2e39;
-  margin: 5px 0;
+  background: #363b47;
+  margin: 4px 0;
   flex: 0 0 auto;
+}
+
+.rail-sep.strong {
+  width: 30px;
+  height: 2px;
+  background: #4a5060;
+  margin: 7px 0;
 }
 
 .rail-count {
@@ -123,12 +132,17 @@
   display: block;
 }
 
+/* Reports the active tool; looks like text on purpose so it is not mistaken for a
+   control. The tool is chosen in the rail. */
 .active-tool {
-  background: #2f3644;
   color: #f0b90b;
-  border: 1px solid #f0b90b55;
-  border-radius: 4px;
-  padding: 3px 8px;
   font-size: 11px;
   white-space: nowrap;
+  padding: 0 6px;
+  opacity: 0.9;
+}
+
+.active-tool::before {
+  content: "✎ ";
+  opacity: 0.7;
 }

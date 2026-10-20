@@ -172,7 +172,8 @@ export function DrawingToolbar({
       </button>
 
       {TOOL_GROUPS.map((group) => (
-        <div key={group.name} className="tool-group">
+        <React.Fragment key={group.name}>
+          <div className="tool-group">
           <button
             className={
               group.tools.some((t) => t.kind === active)
@@ -184,25 +185,28 @@ export function DrawingToolbar({
           >
             {group.icon}
           </button>
-          {openGroup === group.name && (
-            <div className="tool-flyout">
-              <div className="flyout-title">{group.name}</div>
-              {group.tools.map((t) => (
-                <button
-                  key={t.kind}
-                  className={active === t.kind ? "flyout-item active" : "flyout-item"}
-                  onClick={() => { onSelect(t.kind); setOpenGroup(null); }}
-                >
-                  <span className="fi-icon">{t.icon}</span>
-                  <span>{t.label}</span>
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
+            {openGroup === group.name && (
+              <div className="tool-flyout">
+                <div className="flyout-title">{group.name}</div>
+                {group.tools.map((t) => (
+                  <button
+                    key={t.kind}
+                    className={active === t.kind ? "flyout-item active" : "flyout-item"}
+                    onClick={() => { onSelect(t.kind); setOpenGroup(null); }}
+                  >
+                    <span className="fi-icon">{t.icon}</span>
+                    <span>{t.label}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+          {/* a tick between groups so a 9-group rail does not read as a flat list */}
+          <div className="rail-sep" />
+        </React.Fragment>
       ))}
 
-      <div className="rail-sep" />
+      <div className="rail-sep strong" />
 
       <button className="tool-btn" title="Undo (Ctrl+Z)" onClick={onUndo} disabled={!canUndo}>↶</button>
       <button className="tool-btn" title="Redo (Ctrl+Shift+Z)" onClick={onRedo} disabled={!canRedo}>↷</button>
