@@ -242,3 +242,51 @@ with whatever is on disk, and the status line says what actually happened.
 **Evidence.** `tests/feed.test.ts`: stale-cache + rate-limit → `state: "degraded"`,
 `usable: true`, 4 cached bars served. Provider throwing a socket error →
 `state: "error"` with the message, never an unhandled rejection.
+
+
+---
+
+## ADR-009: Drawings live in a canvas overlay, and canvases are replaced elements
+
+**Decision.** Drawings are painted on a `<canvas>` positioned absolutely over the
+chart, driven by a pure state machine in `src/core/drawing-interaction.ts`. The
+model stores data-space coordinates (time, price); the overlay is the only code
+that converts to pixels.
+
+**Why an overlay.** Lightweight Charts has no vector layer and no plugin API for
+shapes. Primitives would have to be rebuilt as series, which cannot express Fib
+fans, pitchforks or pattern labels. An overlay keeps the chart library untouched
+and the geometry testable.
+
+**The bug this produced, recorded because it is non-obvious.** The overlay painted
+nothing. The state machine created drawings, the count showed 1, 2, 3 — and the
+canvas stayed empty. The cause was CSS, not logic:
+
+```css
+.draw-canvas { position: absolute; inset: 0; }   /* wrong for <canvas> */
+```
+
+A `<canvas>` is a **replaced element**. With `width: auto` it keeps its intrinsic
+size (the `width`/`height` content attributes — default 300x150) instead of
+stretching, and `left: 0; right: 0` becomes over-constrained so `right` is ignored.
+The overlay rendered as a 300x150 box in the top-left corner, so every drawing
+landed outside the paint area. Confirmed by probing the running app:
+
+```
+CANVAS_GEOMETRY: {"attrW":300,"attrH":150,...}          before
+CANVAS_GEOMETRY: {"attrW":1116,"attrH":829,...}         after width/height:100%
+```
+
+**Rule.** Explicitly size a canvas overlay (`width: 100%; height: 100%`), and read
+`getBoundingClientRect()` for the CSS box rather than the `width`/`height`
+attributes — writing those attributes is itself what resizes an unconstrained
+canvas, so reading them back feeds the wrong number to the resize logic.
+
+**Related bug in the same area.** Undo appeared broken twice: first the button
+rendered disabled because its `canUndo` depended on a counter only the keyboard path
+incremented; then undo changed the count but not the pixels, because the mutation
+called `history.reset()` (which wipes both stacks) and `invalidate()` (which
+repaints the *last queued* shapes rather than the new ones). The fix is one funnel
+for every mutation (`applyDrawings`), `setCurrent()` instead of `reset()` for
+undo/redo, and a single effect that re-queues the overlay whenever the collection
+changes.

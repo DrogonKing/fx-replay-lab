@@ -1,0 +1,134 @@
+
+/* ================= drawing rail + canvas overlay ================= */
+
+.app {
+  grid-template-columns: 44px 1fr 280px;
+  grid-template-areas: "toolbar toolbar toolbar" "rail chart panel";
+}
+
+.draw-rail {
+  grid-area: rail;
+  background: #1a1e29;
+  border-right: 1px solid #2a2e39;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 6px 0;
+  overflow-y: auto;
+  overflow-x: visible;
+  position: relative;
+  z-index: 5;
+}
+
+.tool-btn {
+  width: 32px;
+  height: 30px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: #9aa0ac;
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+}
+
+.tool-btn:hover { background: #262b37; color: #d1d4dc; }
+.tool-btn.active { background: #2f3644; color: #f0b90b; border-color: #f0b90b66; }
+.tool-btn:disabled { opacity: 0.28; cursor: default; }
+.tool-btn:disabled:hover { background: transparent; color: #9aa0ac; }
+
+.tool-group { position: relative; }
+
+.tool-flyout {
+  position: absolute;
+  left: 38px;
+  top: 0;
+  min-width: 210px;
+  background: #1e222d;
+  border: 1px solid #363a45;
+  border-radius: 6px;
+  padding: 5px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.55);
+  z-index: 50;
+  max-height: 380px;
+  overflow-y: auto;
+}
+
+.flyout-title {
+  color: #787b86;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.7px;
+  padding: 3px 6px 5px;
+}
+
+.flyout-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  color: #d1d4dc;
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  padding: 5px 7px;
+  cursor: pointer;
+}
+
+.flyout-item:hover { background: #2a2e39; }
+.flyout-item.active { background: #2f3644; color: #f0b90b; }
+.fi-icon { width: 16px; text-align: center; color: #9aa0ac; }
+
+.rail-sep {
+  width: 22px;
+  height: 1px;
+  background: #2a2e39;
+  margin: 5px 0;
+  flex: 0 0 auto;
+}
+
+.rail-count {
+  margin-top: auto;
+  color: #4c525e;
+  font-size: 10px;
+  padding: 6px 0;
+}
+
+/* The overlay sits exactly over the chart. pointer-events stay ON so the drawing
+   tools receive input; in select mode the handlers decline to preventDefault so
+   the chart underneath still pans.
+
+   `width/height: 100%` is REQUIRED, not decorative. A <canvas> is a REPLACED
+   element: with `inset: 0` and `width: auto` it keeps its intrinsic size (the
+   width/height content attributes, default 300x150) instead of stretching, and
+   `left:0; right:0` becomes over-constrained so `right` is ignored. The overlay
+   rendered as a 300x150 box in the corner and every drawing fell outside it, which
+   looked exactly like "painting is broken" while the backing store was fine. */
+.draw-canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 2;
+  touch-action: none;
+  display: block;
+}
+
+.active-tool {
+  background: #2f3644;
+  color: #f0b90b;
+  border: 1px solid #f0b90b55;
+  border-radius: 4px;
+  padding: 3px 8px;
+  font-size: 11px;
+  white-space: nowrap;
+}

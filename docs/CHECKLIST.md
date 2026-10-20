@@ -54,9 +54,16 @@ BAD PINE: "unsupported ta.notReal() (bar 0)"  ← precise, not silent
 - [x] 30k-bar sample on first start
 - [x] No TradingView logo; attribution present
 - [x] Symbol legend with OHLC
-- [x] Drawing model: hline, trendline, ray, rectangle, Fib, channel, position + undo/redo + hit-testing
-- [ ] Drawing tools wired to mouse (model + hit-test done, canvas interaction pending)
-- [ ] Drawing persistence per symbol
+- [x] Drawing model: 60+ tools across lines, channels, shapes, Fibonacci, Gann,
+      patterns (XABCD/ABCD/Elliott/head-shoulders/harmonics), forecast, annotation,
+      measure
+- [x] Interaction state machine: drag-create, multi-click patterns, drag-to-move,
+      hit-testing, cancel, delete
+- [x] Canvas overlay rendering with devicePixelRatio handling and frame coalescing
+- [x] Tool rail with 9 grouped flyouts, undo/redo/delete, Esc to cancel
+- [x] Verified by real pointer events in the running app: trend line, Fib (7 levels),
+      rectangle all paint; undo repaints correctly
+- [ ] Drawing persistence per symbol (model is session-only)
 - [ ] Import dialog with column mapping UI (auto-detect only today)
 - [ ] Data quality report UI
 - [ ] Symbol manager UI
@@ -141,6 +148,7 @@ BAD PINE: "unsupported ta.notReal() (bar 0)"  ← precise, not silent
 - [x] Real-network live smoke test
 - [x] Screenshot capture via CDP
 - [x] electron-builder: Windows nsis+zip, macOS dmg, Linux AppImage+deb
+- [x] Application icon generated programmatically (512px PNG + multi-size ICO)
 - [x] GitHub Actions: verify → package matrix → release on tag
 - [x] `docs/USER_GUIDE.md` with known limitations
 - [x] `docs/PINE-COMPATIBILITY.md`

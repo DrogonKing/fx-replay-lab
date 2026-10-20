@@ -24,7 +24,16 @@ import { adx, cci, vwap, supertrend } from "../core/indicators-ext.js";
 import { formatDateTime, formatOffset } from "../core/timezone.js";
 import { parseCsv } from "../core/csv.js";
 import { seriesFromCandles } from "../core/series.js";
-import { DrawingHistory, type Drawing, type DrawingKind } from "../core/drawings.js";
+import {
+  DrawingHistory, type Drawing, type DrawingKind, type Point,
+} from "../core/drawings.js";
+import {
+  initialState, onPointerDown, onPointerMove, onPointerUp, onCancel,
+  type InteractionState, type PointerContext,
+} from "../core/drawing-interaction.js";
+import { nearestDrawing } from "../core/drawing-interaction.js";
+import { DrawingToolbar, TOOL_LABELS } from "./DrawingToolbar.js";
+import { DrawingOverlay, toData } from "./overlay.js";
 import { DataPanel } from "./panels/DataPanel.js";
 import { StrategyPanel } from "./panels/StrategyPanel.js";
 import { JournalPanel } from "./panels/JournalPanel.js";
@@ -79,6 +88,20 @@ export function App(): JSX.Element {
 
   const feedRef = useRef<Feed | null>(null);
   const drawingsRef = useRef(new DrawingHistory());
+  const overlayRef = useRef<DrawingOverlay | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+
+  // Drawing interaction lives in a ref: pointer handlers fire at pointer rate and
+  // re-rendering React on every mouse move would make the chart stutter.
+  const interRef = useRef<InteractionState>(initialState());
+  const [drawCount, setDrawCount] = useState(0);
+  /**
+   * Bumped on every drawing mutation so the undo/redo buttons re-render with the
+   * right disabled state. A separate counter that only the keyboard path touched
+   * left the buttons disabled after mouse drawing, which made undo look broken.
+   */
+  const [revision, setRevision] = useState(0);
+  const [hoverId, setHoverId] = useState<string | null>(null);
 
   // The chart shows only the revealed bars so replay cannot peek ahead.
   const view = useMemo(() => {
@@ -118,10 +141,36 @@ export function App(): JSX.Element {
       upColor: "#26a69a", downColor: "#ef5350", borderVisible: false,
       wickUpColor: "#26a69a", wickDownColor: "#ef5350",
     });
-    const ro = new ResizeObserver(() => chart.applyOptions({}));
+    // Drawing overlay: a canvas pinned exactly over the chart. Lightweight Charts
+    // has no vector layer, so shapes are painted here in screen space while the
+    // model stays in data space.
+    if (canvasRef.current && candleRef.current) {
+      overlayRef.current = new DrawingOverlay(
+        canvasRef.current, chart, candleRef.current,
+        {
+          background: "#131722", grid: "#1e222d", text: "#d1d4dc",
+          crosshair: "#787b86", accent: "#f0b90b",
+          up: "#26a69a", down: "#ef5350",
+        },
+      );
+    }
+
+    const ro = new ResizeObserver(() => {
+      chart.applyOptions({});
+      overlayRef.current?.resize();
+      overlayRef.current?.invalidate();
+    });
     ro.observe(chartHost.current);
+
+    // Repaint drawings whenever the visible range changes (pan, zoom, new bar).
+    const onRange = () => overlayRef.current?.invalidate();
+    chart.timeScale().subscribeVisibleLogicalRangeChange(onRange);
+
     return () => {
       ro.disconnect();
+      chart.timeScale().unsubscribeVisibleLogicalRangeChange(onRange);
+      overlayRef.current?.destroy();
+      overlayRef.current = null;
       chart.remove();
       chartRef.current = null;
       lineRefs.current.clear();
@@ -200,9 +249,17 @@ export function App(): JSX.Element {
       else if (e.code === "ArrowRight") {
         e.preventDefault();
         setRevealed((r) => Math.min(base.length, r + 1));
+      } else if (e.code === "Escape") {
+        setTool(null);
+        interRef.current = onCancel(interRef.current, drawingsRef.current.get()).state;
+        overlayRef.current?.invalidate();
       } else if ((e.ctrlKey || e.metaKey) && e.code === "KeyZ") {
         e.preventDefault();
-        drawingsRef.current.undo();
+        if (e.shiftKey) {
+          if (drawingsRef.current.canRedo()) applyDrawings(drawingsRef.current.redo(), false);
+        } else if (drawingsRef.current.canUndo()) {
+          applyDrawings(drawingsRef.current.undo(), false);
+        }
       }
     };
     window.addEventListener("keydown", onKey);
@@ -271,6 +328,130 @@ export function App(): JSX.Element {
     setStatus(`Timeframe set to ${parsed.label}`);
   }, [custom]);
 
+  // ------------------------------------------------- drawing interaction
+  /**
+   * Convert a browser pointer event into data space.
+   *
+   * The tolerance is derived from pixels so a 6 px hit area feels the same at any
+   * zoom: price units per pixel from the price scale, and seconds per pixel from
+   * the time scale, combined into the isotropic `timeWeight` the core expects.
+   */
+  const pointerCtx = useCallback((e: React.PointerEvent): PointerContext | null => {
+    const chart = chartRef.current;
+    const series = candleRef.current;
+    const canvas = canvasRef.current;
+    if (!chart || !series || !canvas) return null;
+
+    const rect = canvas.getBoundingClientRect();
+    const p = toData(chart, series, e.clientX - rect.left, e.clientY - rect.top);
+    if (!p) return null;
+
+    const pricePerPx = Math.abs(series.coordinateToPrice(1)! - series.coordinateToPrice(0)!) || 0.01;
+    const timeScale = chart.timeScale();
+    const t0 = timeScale.coordinateToTime(0);
+    const t1 = timeScale.coordinateToTime(100);
+    const secPerPx = t0 !== null && t1 !== null
+      ? Math.abs((t1 as number) - (t0 as number)) / 100
+      : 60;
+
+    return {
+      point: p,
+      tolerance: pricePerPx * 6,
+      // price units per second, so a pixel tolerance is isotropic
+      timeWeight: pricePerPx / Math.max(1e-9, secPerPx),
+      nextId: () => `dr_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+      style: { color: "#f0b90b", width: 2 },
+      rightEdge: view.length > 0 ? view.time[view.length - 1]! + 3600 : p.time,
+    };
+  }, [view]);
+
+  /**
+   * Apply a mutation to the drawing collection.
+   *
+   * Single funnel so the count, the revision (button state) and the canvas can
+   * never disagree. Every earlier bug in this area came from updating some of the
+   * three and forgetting another.
+   */
+  const applyDrawings = useCallback((next: Drawing[] | readonly Drawing[], record: boolean) => {
+    // commit() records history; setCurrent() replaces without touching it. Never
+    // reset() here: that would wipe the stacks and break repeated undo/redo.
+    if (record) drawingsRef.current.commit([...next]);
+    else drawingsRef.current.setCurrent([...next]);
+    setDrawCount(drawingsRef.current.get().length);
+    setRevision((r) => r + 1);
+    overlayRef.current?.invalidate();
+  }, []);
+
+  const repaint = useCallback(() => {
+    const o = overlayRef.current;
+    if (!o || view.length === 0) return;
+    const rightEdge = view.time[view.length - 1]! + 3600;
+    o.queue(
+      drawingsRef.current.get(), interRef.current, rightEdge,
+      hoverId, null,
+    );
+    setDrawCount(drawingsRef.current.get().length);
+  }, [view, hoverId]);
+
+  const onCanvasDown = useCallback((e: React.PointerEvent) => {
+    const chart = chartRef.current;
+    if (!chart) return;
+    if (tool === null) {
+      // select mode: let the chart pan unless we grabbed a drawing
+      const c = pointerCtx(e);
+      if (!c) return;
+      const hit = nearestDrawing(drawingsRef.current.get(), c.point, c.tolerance, c.timeWeight);
+      if (!hit) return;
+    }
+    e.preventDefault();
+    const c = pointerCtx(e);
+    if (!c) return;
+    const r = onPointerDown(interRef.current, drawingsRef.current.get(), c);
+    interRef.current = r.state;
+    if (r.committed) applyDrawings(r.drawings, true);
+    else repaint();
+  }, [tool, pointerCtx, repaint, applyDrawings]);
+
+  const onCanvasMove = useCallback((e: React.PointerEvent) => {
+    const c = pointerCtx(e);
+    if (!c) return;
+
+    if (interRef.current.pressed || interRef.current.tool) {
+      const r = onPointerMove(interRef.current, drawingsRef.current.get(), c);
+      interRef.current = r.state;
+      if (interRef.current.draggingId) {
+        // live drag: mutate without recording a history entry per pixel
+        applyDrawings(r.drawings, false);
+      } else {
+        repaint();
+      }
+      return;
+    }
+
+    // hover highlight
+    const hit = nearestDrawing(drawingsRef.current.get(), c.point, c.tolerance, c.timeWeight);
+    if (hit !== hoverId) {
+      setHoverId(hit);
+      overlayRef.current?.setHovered(hit);
+      repaint();
+    }
+  }, [pointerCtx, repaint, hoverId]);
+
+  const onCanvasUp = useCallback((e: React.PointerEvent) => {
+    const c = pointerCtx(e);
+    if (!c) return;
+    const r = onPointerUp(interRef.current, drawingsRef.current.get(), c);
+    interRef.current = r.state;
+    if (r.committed) applyDrawings(r.drawings, true);
+    else repaint();
+  }, [pointerCtx, repaint, applyDrawings]);
+
+  // Keep the overlay's queued shapes in sync with the model. Every mutation bumps
+  // `revision`, so this is the single place that pushes drawings to the canvas.
+  useEffect(() => {
+    repaint();
+  }, [revision, view, hoverId, repaint]);
+
   const currentTime = view.length > 0 ? view.time[view.length - 1]! : 0;
   const lastBar = view.length > 0
     ? {
@@ -331,27 +512,44 @@ export function App(): JSX.Element {
 
         <div className="grow" />
 
-        <label>
-          draw{" "}
-          <select
-            value={tool ?? ""}
-            onChange={(e) => setTool((e.target.value || null) as DrawingKind | null)}
-          >
-            <option value="">none</option>
-            <option value="hline">horizontal line</option>
-            <option value="trendline">trend line</option>
-            <option value="ray">ray</option>
-            <option value="rectangle">rectangle</option>
-            <option value="fib-retracement">fib retracement</option>
-            <option value="channel">channel</option>
-            <option value="long-position">long position</option>
-            <option value="short-position">short position</option>
-          </select>
-        </label>
+        {tool && (
+          <span className="active-tool">{TOOL_LABELS[tool] ?? tool}</span>
+        )}
       </header>
+
+      <DrawingToolbar
+        active={tool}
+        onSelect={(k) => {
+          setTool(k);
+          interRef.current = { ...initialState(), tool: k };
+        }}
+        onDelete={() => {
+          if (drawingsRef.current.get().length === 0) return;
+          applyDrawings([], true);
+        }}
+        onUndo={() => {
+          if (!drawingsRef.current.canUndo()) return;
+          applyDrawings(drawingsRef.current.undo(), false);
+        }}
+        onRedo={() => {
+          if (!drawingsRef.current.canRedo()) return;
+          applyDrawings(drawingsRef.current.redo(), false);
+        }}
+        canUndo={revision >= 0 && drawingsRef.current.canUndo()}
+        canRedo={revision >= 0 && drawingsRef.current.canRedo()}
+        count={drawCount}
+      />
 
       <div className="chart-area">
         <div ref={chartHost} className="chart-host" />
+        <canvas
+          ref={canvasRef}
+          className="draw-canvas"
+          onPointerDown={onCanvasDown}
+          onPointerMove={onCanvasMove}
+          onPointerUp={onCanvasUp}
+          onPointerLeave={onCanvasUp}
+        />
         <div className="legend">
           <span className="sym">{offline ? "XAUUSD (sample)" : symbolId}</span>
           <span className="sep">·</span>

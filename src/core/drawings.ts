@@ -9,18 +9,39 @@
  * correct across zoom, timeframe change and window resize.
  */
 
+/**
+ * All drawing kinds.
+ *
+ * Defined here as a closed list and re-exported as `ShapeKind` from
+ * drawings-ext.ts, so there is exactly ONE enumeration. A previous version kept a
+ * hand-written copy in each module; they drifted, and the renderer's switch ended
+ * up with cases TypeScript rejected as "not comparable" because the two unions
+ * were different types with the same intent.
+ */
 export type DrawingKind =
-  | "trendline"
-  | "hline"
-  | "vline"
-  | "ray"
-  | "rectangle"
-  | "fib-retracement"
-  | "fib-extension"
-  | "channel"
-  | "text"
-  | "long-position"
-  | "short-position";
+  // lines
+  | "trendline" | "hline" | "vline" | "ray" | "extended-line" | "cross-line"
+  | "trend-angle" | "horizontal-ray"
+  // channels
+  | "channel" | "pitchfork" | "regression-trend"
+  // shapes
+  | "rectangle" | "rotated-rectangle" | "ellipse" | "circle" | "triangle"
+  | "arc" | "curve" | "path" | "polygon" | "double-curve"
+  // fib / gann
+  | "fib-retracement" | "fib-extension" | "fib-channel" | "fib-time-zone"
+  | "fib-speed-fan" | "fib-arcs" | "fib-wedge" | "gann-fan" | "gann-box"
+  // annotations
+  | "text" | "note" | "callout" | "price-label" | "arrow" | "arrow-marker"
+  | "flag" | "comment" | "signpost" | "balloon"
+  // patterns
+  | "xabcd" | "abcd" | "triangle-pattern" | "three-drives" | "head-shoulders"
+  | "elliott-impulse" | "elliott-correction" | "cypher" | "bat" | "crab"
+  | "butterfly" | "shark" | "five-points-pattern"
+  // forecasting
+  | "long-position" | "short-position" | "projection" | "date-range"
+  | "price-range" | "date-price-range" | "ghost-feed"
+  // measurement
+  | "measure" | "zoom-in";
 
 export interface Point {
   /** UTC epoch seconds */
@@ -271,6 +292,18 @@ export class DrawingHistory {
   canRedo(): boolean {
     return this.future.length > 0;
   }
+  /**
+   * Replace the collection WITHOUT touching the undo/redo stacks.
+   *
+   * Used by undo/redo themselves and by live drags. `reset()` is the wrong call for
+   * those: it clears history, so undoing once destroyed the redo stack and made a
+   * second undo impossible.
+   */
+  setCurrent(drawings: Drawing[]): void {
+    this.current = drawings;
+  }
+
+  /** Clear the collection AND the history (used by "delete all"). */
   reset(drawings: Drawing[] = []): void {
     this.current = drawings;
     this.past = [];
