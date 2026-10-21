@@ -69,6 +69,7 @@ import { DataPanel } from "./panels/DataPanel.js";
 import { StrategyPanel } from "./panels/StrategyPanel.js";
 import { JournalPanel } from "./panels/JournalPanel.js";
 import { DownloaderPanel } from "./panels/DownloaderPanel.js";
+import { BrokerPanel } from "./panels/BrokerPanel.js";
 import { createFeed, symbols as LIVE_SYMBOLS } from "./livefeed.js";
 import type { Feed, FeedStatus } from "../core/feed.js";
 import type { Candle, CandleSeries, Timeframe } from "../core/types.js";
@@ -76,7 +77,7 @@ import { auditCandles, describeSpacing, parseText } from "../core/importer.js";
 
 type IndicatorKind = "SMA" | "EMA" | "BB" | "RSI" | "ADX" | "CCI" | "VWAP" | "SUPERTREND";
 type RailTab =
-  | "data" | "download" | "trade" | "news" | "sessions" | "equity"
+  | "data" | "download" | "broker" | "trade" | "news" | "sessions" | "equity"
   | "indicators" | "strategy" | "journal" | "symbols";
 
 const SESSION_LABELS: Record<SessionName, string> = {
@@ -1432,7 +1433,7 @@ function makePriceSeries(
 
       <aside className="panel">
         <nav className="rail-tabs">
-          {(["data", "download", "trade", "news", "sessions", "equity", "indicators", "strategy", "journal", "symbols"] as RailTab[]).map((tabId) => (
+          {(["data", "download", "broker", "trade", "news", "sessions", "equity", "indicators", "strategy", "journal", "symbols"] as RailTab[]).map((tabId) => (
             <button
               key={tabId}
               data-tab={tabId}
@@ -1466,6 +1467,13 @@ function makePriceSeries(
                 );
               }
             }}
+          />
+        )}
+
+        {rail === "broker" && (
+          <BrokerPanel
+            onStatus={setStatus}
+            onLoad={(label, candles) => loadCandles(label, candles)}
           />
         )}
 

@@ -18,6 +18,7 @@ import { parseDrawings, parseJournal } from "../core/persist.js";
 import { fetchJson } from "./net.js";
 import { decompressBi5, downloadRange, unzipCsv } from "./dukascopy-download.js";
 import { parseDukascopyDay } from "../core/importer.js";
+import { fetchBridgeCandles, fetchOandaCandles, testBridge } from "./broker-fetch.js";
 import {
   handleBacktest, handleOptimize, handleWalkForward, handleMonteCarlo,
   handlePine, handlePineParse, type RunRequest,
@@ -188,6 +189,43 @@ app.whenReady().then(() => {
     }
 
     return { ok: true, name, text: buf.toString("utf8") };
+  });
+
+  /** Probe a local MT5 bridge. Read-only: health, symbols, and one real bar. */
+  ipcMain.handle("broker:testBridge", async (_e, url: string) => {
+    try {
+      return await testBridge(String(url));
+    } catch (err) {
+      return { ok: false, error: (err as Error).message };
+    }
+  });
+
+  /** Bars from a local MT5 bridge. Any broker's terminal works, because the bridge drives it. */
+  ipcMain.handle("broker:bridgeCandles", async (_e, req: {
+    url: string; symbol: string; timeframe: string; from: number; to: number;
+  }) => {
+    try {
+      return await fetchBridgeCandles(req);
+    } catch (err) {
+      return { ok: false, error: (err as Error).message };
+    }
+  });
+
+  /**
+   * Bars from OANDA.
+   *
+   * The token arrives in the IPC payload and is used once, in memory. It is never written to
+   * the database, never logged, and never returned — only candles or an error come back.
+   */
+  ipcMain.handle("broker:oandaCandles", async (_e, req: {
+    token: string; accountId: string; symbol: string; intervalMinutes: number;
+    from: number; to: number; price: "bid" | "ask" | "mid"; practice: boolean;
+  }) => {
+    try {
+      return await fetchOandaCandles(req);
+    } catch (err) {
+      return { ok: false, error: (err as Error).message };
+    }
   });
 
   ipcMain.handle("db:loadToolConfigs", () =>

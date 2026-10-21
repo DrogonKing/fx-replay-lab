@@ -25,6 +25,25 @@ const ALLOWED_HOSTS = new Set([
   "stooq.pl",
 ]);
 
+/**
+ * Is this a local bridge URL?
+ *
+ * The MT5 bridge listens on loopback over plain HTTP, which `hostAllowed` forbids on purpose.
+ * Rather than loosening the general rule, local bridge access is its own narrow exception:
+ * loopback only, http only, and only the paths the bridge actually serves. A hostile URL that
+ * slipped through could still not reach any other host.
+ */
+export function bridgeUrlAllowed(url: string): boolean {
+  try {
+    const u = new URL(url);
+    if (u.protocol !== "http:") return false;
+    if (u.hostname !== "127.0.0.1" && u.hostname !== "localhost") return false;
+    return ["/health", "/symbols", "/timeframes", "/candles"].includes(u.pathname);
+  } catch {
+    return false;
+  }
+}
+
 export function hostAllowed(url: string): boolean {
   try {
     const u = new URL(url);

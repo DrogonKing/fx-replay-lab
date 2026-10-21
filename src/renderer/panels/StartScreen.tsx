@@ -163,6 +163,9 @@ export function StartScreen({
           <button
             className="primary"
             data-action="start-go"
+            // exposed for tests: an unobservable disabled state made a smoke test flaky, because
+            // the only way to know was to click and hope
+            data-ready={canDownload ? "yes" : "no"}
             disabled={!canDownload}
             onClick={() => onStart({
               mode,

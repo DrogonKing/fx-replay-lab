@@ -75,6 +75,37 @@ const api = {
     message?: string;
   }> => ipcRenderer.invoke("data:pickFile"),
 
+  /** Probe a local MT5 bridge: health, symbols, and one real bar. Read-only. */
+  testBridge: (url: string): Promise<{
+    ok: boolean;
+    health?: { ok?: boolean; connected?: boolean; symbols?: number };
+    symbols?: string[];
+    bars?: number;
+    firstOpen?: number;
+    firstTime?: string;
+    lastTime?: string;
+    error?: string;
+  }> => ipcRenderer.invoke("broker:testBridge", url),
+
+  /** Bars from a local MT5 bridge (any MT4/MT5 broker, via its own terminal). */
+  fetchBridgeCandles: (req: {
+    url: string; symbol: string; timeframe: string; from: number; to: number;
+  }): Promise<{
+    ok: boolean;
+    candles?: Array<{ time: number; open: number; high: number; low: number; close: number; volume: number }>;
+    error?: string;
+  }> => ipcRenderer.invoke("broker:bridgeCandles", req),
+
+  /** Bars from OANDA. The token is never stored or returned. */
+  fetchOandaCandles: (req: {
+    token: string; accountId: string; symbol: string; intervalMinutes: number;
+    from: number; to: number; price: "bid" | "ask" | "mid"; practice: boolean;
+  }): Promise<{
+    ok: boolean;
+    candles?: Array<{ time: number; open: number; high: number; low: number; close: number; volume: number }>;
+    error?: string;
+  }> => ipcRenderer.invoke("broker:oandaCandles", req),
+
   /** Per-tool drawing style: raw JSON text, parsed by the renderer once. */
   loadToolConfigs: (): Promise<{ raw: string | null; updatedAt: number | null }> =>
     ipcRenderer.invoke("db:loadToolConfigs"),
