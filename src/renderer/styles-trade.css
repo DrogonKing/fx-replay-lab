@@ -132,6 +132,140 @@
   color: #5d606b;
 }
 
+/* ================= start screen ================= */
+.start-screen {
+  align-items: center;
+  background:
+    radial-gradient(circle at 30% 10%, #1b2130 0%, transparent 55%),
+    radial-gradient(circle at 75% 85%, #171c27 0%, transparent 50%),
+    #0f1319;
+  display: flex;
+  height: 100%;
+  justify-content: center;
+  overflow-y: auto;
+  padding: 24px;
+}
+
+.start-card {
+  background: #161b26;
+  border: 1px solid #242b36;
+  border-radius: 12px;
+  max-width: 460px;
+  padding: 26px 28px;
+  width: 100%;
+}
+
+.start-title {
+  color: #f0b90b;
+  font-size: 19px;
+  letter-spacing: 0.3px;
+  margin: 0 0 4px;
+}
+
+.start-sub { color: #8b93a3; font-size: 12px; margin: 0 0 18px; }
+
+.start-modes { display: flex; gap: 8px; margin-bottom: 16px; }
+
+.start-mode {
+  background: #1b212c;
+  border: 1px solid #2a323f;
+  border-radius: 8px;
+  color: #d1d4dc;
+  cursor: pointer;
+  flex: 1;
+  padding: 12px;
+  text-align: left;
+  transition: border-color 0.12s, background 0.12s;
+}
+
+.start-mode:hover { background: #212836; }
+.start-mode.on { background: #23283a; border-color: #f0b90b; }
+.start-mode b { display: block; font-size: 13px; margin-bottom: 3px; }
+.start-mode.on b { color: #f0b90b; }
+.start-mode span { color: #787b86; font-size: 10.5px; line-height: 1.35; }
+
+.start-field {
+  color: #8b93a3;
+  display: block;
+  font-size: 10px;
+  letter-spacing: 0.4px;
+  margin-bottom: 12px;
+  text-transform: uppercase;
+}
+
+.start-field select {
+  background: #1b212c;
+  border: 1px solid #2a323f;
+  border-radius: 5px;
+  color: #d1d4dc;
+  display: block;
+  font-size: 12px;
+  margin-top: 5px;
+  padding: 6px 8px;
+  width: 100%;
+}
+
+.start-intervals { display: flex; gap: 4px; margin-top: 5px; }
+
+.si {
+  background: #1b212c;
+  border: 1px solid #2a323f;
+  border-radius: 4px;
+  color: #8b93a3;
+  cursor: pointer;
+  flex: 1;
+  font-size: 11px;
+  padding: 5px 0;
+}
+.si.on { background: #23283a; border-color: #f0b90b; color: #f0b90b; font-weight: 600; }
+
+.start-period { display: flex; gap: 6px; }
+.start-period select { flex: 1; }
+
+.start-avail {
+  border-radius: 5px;
+  font-size: 10.5px;
+  line-height: 1.4;
+  margin: 0 0 12px;
+  padding: 7px 9px;
+}
+.start-avail { background: #14231c; color: #6fbf9a; }
+.start-avail.warn { background: #2a2410; color: #f0b90b; }
+.start-avail.bad { background: #2a1a1a; color: #ef8b8b; }
+
+.start-actions { display: flex; gap: 8px; }
+
+.start-actions button {
+  background: #1b212c;
+  border: 1px solid #2a323f;
+  border-radius: 6px;
+  color: #d1d4dc;
+  cursor: pointer;
+  flex: 1;
+  font: inherit;
+  font-size: 12px;
+  padding: 9px 12px;
+}
+
+.start-actions button.primary {
+  background: #f0b90b;
+  border-color: #f0b90b;
+  color: #0f1319;
+  font-weight: 600;
+}
+.start-actions button.primary:disabled { background: #3a3a2a; border-color: #3a3a2a; color: #787b86; cursor: default; }
+.start-actions button:hover:not(:disabled) { border-color: #3a4351; }
+.start-actions button.primary:hover:not(:disabled) { background: #f7c41f; }
+
+.start-foot {
+  border-top: 1px solid #232b36;
+  color: #5c6373;
+  font-size: 10px;
+  margin: 16px 0 0;
+  padding-top: 12px;
+  text-align: center;
+}
+
 /* ================= journal R calendar ================= */
 .cal-head {
   align-items: center;

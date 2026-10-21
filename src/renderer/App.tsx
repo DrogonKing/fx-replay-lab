@@ -34,6 +34,11 @@ import {
 import { nearestDrawing } from "../core/drawing-interaction.js";
 import { DrawingToolbar, TOOL_LABELS, ALL_KINDS } from "./DrawingToolbar.js";
 import { ToolSettings } from "./panels/ToolSettings.js";
+import { StartScreen, type StartChoice } from "./panels/StartScreen.js";
+import {
+  mergeSeries, newBarIndices, availability, effectiveFrom, describeMode,
+  parseModeState, type SessionMode, type ModeState,
+} from "../core/session-mode.js";
 import {
   defaultConfigs, mergeConfigs, serialiseConfigs, styleFor,
   type ToolConfig,
@@ -230,6 +235,13 @@ function makePriceSeries(
   const [locked, setLocked] = useState(false);
   const [hiddenDrawings, setHiddenDrawings] = useState(false);
   const [favourites, setFavourites] = useState<DrawingKind[]>([]);
+
+  /** live paper trading, or replay; null until the start screen has been answered */
+  const [sessionMode, setSessionMode] = useState<SessionMode | null>(null);
+  const [modeState, setModeState] = useState<ModeState>(() => parseModeState(null));
+  /** the last bar time the account has already processed, so a poll cannot re-charge it */
+  const lastProcessedRef = useRef(0);
+  const liveTimerRef = useRef<number | null>(null);
 
   // Load the saved per-tool styles once. A failure here must not stop the app: the defaults
   // are perfectly usable, so it reports and carries on.
@@ -432,6 +444,59 @@ function makePriceSeries(
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [base.length]);
+
+  /**
+   * One live poll.
+   *
+   * Re-requests a trailing window because that is the only thing a quote endpoint offers, then
+   * MERGES rather than replaces: replacing would reset the series and the account would lose
+   * every bar it has already accounted for. `lastProcessedRef` is what stops a forming bar
+   * from being filled twice — commission and swap would double on every poll otherwise.
+   */
+  const pollLive = useCallback(async (): Promise<void> => {
+    if (!feedRef.current) feedRef.current = createFeed();
+    const nowSec = Math.floor(Date.now() / 1000);
+    const a = availability(5, nowSec - 30 * 86400, nowSec);
+    try {
+      const r = await feedRef.current.load({
+        symbol: symbolId,
+        intervalMinutes: 5,
+        from: effectiveFrom(nowSec - 30 * 86400, a),
+      });
+      setFeedStatus(r.status);
+      if (r.series.length === 0) return;
+
+      setBase((prev) => {
+        const merged = mergeSeries(prev, r.series);
+        const added = newBarIndices(prev.time.length, merged.time.length);
+        const i = merged.time.length - 1;
+        const lastTime = merged.time[i]!;
+
+        // Only a bar strictly newer than the last processed one may advance the account.
+        // A forming bar would otherwise be filled at a price that never existed, and the
+        // commission and swap would be charged again on every poll.
+        if (added.length > 0 && lastTime > lastProcessedRef.current) {
+          lastProcessedRef.current = lastTime;
+          session.onBar(
+            {
+              time: lastTime,
+              open: merged.open[i]!,
+              high: merged.high[i]!,
+              low: merged.low[i]!,
+              close: merged.close[i]!,
+              volume: merged.volume[i]!,
+            },
+            i,
+          );
+        }
+        // live shows the newest bar: there is nothing to reveal
+        setRevealed(merged.time.length);
+        return merged;
+      });
+    } catch (e) {
+      setStatus(`live poll failed: ${(e as Error).message}`);
+    }
+  }, [symbolId, session]);
 
   // ------------------------------------------------------------- loading
   const loadLive = useCallback(async (): Promise<void> => {
@@ -814,6 +879,29 @@ function makePriceSeries(
   }, [base, revealed, session, restoreSettled]);
 
   /**
+   * The live poll timer.
+   *
+   * Started only in live mode and cleared on unmount or mode change. A leaked timer would keep
+   * polling after the user switched to replay, appending today's bars onto a 2019 chart.
+   */
+  useEffect(() => {
+    if (sessionMode !== "live") {
+      if (liveTimerRef.current !== null) {
+        window.clearInterval(liveTimerRef.current);
+        liveTimerRef.current = null;
+      }
+      return;
+    }
+    void pollLive();
+    const id = window.setInterval(() => { void pollLive(); }, modeState.pollSeconds * 1000);
+    liveTimerRef.current = id;
+    return () => {
+      window.clearInterval(id);
+      liveTimerRef.current = null;
+    };
+  }, [sessionMode, modeState.pollSeconds, pollLive]);
+
+  /**
    * ATR series for ATR trailing, computed once per loaded series.
    *
    * Only the revealed prefix matters, but the whole array is computed because the
@@ -1073,6 +1161,90 @@ function makePriceSeries(
       }
     : null;
 
+  /**
+   * Start a session from the start screen.
+   *
+   * Live and replay differ in exactly two ways: where the bars come from, and whether the
+   * clock advances on its own. Everything downstream — account engine, trade panel, journal —
+   * is the same code, which is the point.
+   */
+  const startSession = async (choice: StartChoice): Promise<void> => {
+    setSessionMode(choice.mode);
+    setModeState((m) => ({ ...m, mode: choice.mode }));
+    setSymbolId(choice.symbol);
+    setOffline(false);
+    setLoading(true);
+    setStatus("");
+
+    try {
+      if (!feedRef.current) feedRef.current = createFeed();
+
+      if (choice.mode === "live") {
+        const nowSec = Math.floor(Date.now() / 1000);
+        const a = availability(choice.intervalMinutes, nowSec - 30 * 86400, nowSec);
+        const r = await feedRef.current.load({
+          symbol: choice.symbol,
+          intervalMinutes: choice.intervalMinutes,
+          from: effectiveFrom(nowSec - 30 * 86400, a),
+        });
+        setFeedStatus(r.status);
+        if (r.series.length === 0) {
+          setStatus(r.status.message);
+          setSessionMode(null);
+          return;
+        }
+        setBase(r.series);
+        setRevealed(r.series.length);
+        // the account starts from the newest CLOSED bar, not the forming one
+        lastProcessedRef.current = r.series.time[r.series.time.length - 1]!;
+        setStatus(`${r.status.message} — ${r.series.length.toLocaleString()} bars · ${describeMode("live")}`);
+      } else {
+        const nowSec = Math.floor(Date.now() / 1000);
+        const a = availability(choice.intervalMinutes, choice.from ?? 0, nowSec);
+        const r = await feedRef.current.load({
+          symbol: choice.symbol,
+          intervalMinutes: choice.intervalMinutes,
+          from: effectiveFrom(choice.from ?? 0, a),
+        });
+        setFeedStatus(r.status);
+        if (r.series.length === 0) {
+          setStatus(r.status.message);
+          setSessionMode(null);
+          return;
+        }
+        setBase(r.series);
+        // replay reveals a leading window so there is context, then steps forward
+        const lead = Math.min(200, Math.max(20, Math.floor(r.series.length * 0.1)));
+        setRevealed(lead);
+        lastProcessedRef.current = 0;
+        setStatus(`${r.status.message} — ${r.series.length.toLocaleString()} bars · replay`);
+      }
+    } catch (e) {
+      setStatus(`load failed: ${(e as Error).message}`);
+      setSessionMode(null);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // The start screen owns the whole window until a mode is chosen: there is no meaningful
+  // chart to show before the user has said what they want to trade.
+  if (sessionMode === null) {
+    return (
+      <StartScreen
+        symbols={LIVE_SYMBOLS.map((s) => ({ id: s.id, label: s.label }))}
+        onStart={(c) => void startSession(c)}
+        onImport={() => {
+          // the start screen has no file input of its own; enter replay and let the Data
+          // panel's importer take the file, which is the one place CSV is parsed
+          setSessionMode("replay");
+          setRail("data");
+          setStatus("Import a CSV from the Data panel.");
+        }}
+      />
+    );
+  }
+
   return (
     <div className="app">
       <header className="toolbar">
@@ -1204,7 +1376,7 @@ function makePriceSeries(
         count={drawCount}
       />
 
-      <div className="chart-area">
+      <div className="chart-area" data-bars={base.time.length} data-mode={sessionMode}>
         <div ref={chartHost} className="chart-host" />
         <canvas
           ref={canvasRef}
