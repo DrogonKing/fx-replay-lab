@@ -42,26 +42,31 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 from urllib.parse import parse_qs, urlparse
 
+# Imported without exiting on failure, so --selftest can REPORT the problem instead of dying
+# on it. A diagnostic that cannot run without the thing it diagnoses is useless.
 try:
     import MetaTrader5 as mt5
-except ImportError:
-    print("ERROR: MetaTrader5 is not installed.", file=sys.stderr)
-    print("  pip install MetaTrader5", file=sys.stderr)
-    print("This package only ships for Windows (win_amd64). On Linux it cannot work.", file=sys.stderr)
-    sys.exit(1)
+    MT5_IMPORT_ERROR: str | None = None
+except ImportError as exc:
+    mt5 = None  # type: ignore[assignment]
+    MT5_IMPORT_ERROR = str(exc)
 
 
 # MetaTrader's timeframe constants, keyed by the app's own names. MT5 does not accept an
 # arbitrary interval: asking for something absent here is a hard error, so this is a closed map.
-TIMEFRAMES = {
-    "M1": mt5.TIMEFRAME_M1,
-    "M5": mt5.TIMEFRAME_M5,
-    "M15": mt5.TIMEFRAME_M15,
-    "M30": mt5.TIMEFRAME_M30,
-    "H1": mt5.TIMEFRAME_H1,
-    "H4": mt5.TIMEFRAME_H4,
-    "D1": mt5.TIMEFRAME_D1,
-}
+#
+# Built LAZILY, because the module must import on a machine without MetaTrader5 — that is the
+# machine --selftest is for. A module-level dict dereferencing mt5 crashed the whole file.
+_TIMEFRAME_NAMES = ["M1", "M5", "M15", "M30", "H1", "H4", "D1"]
+_tf_cache: dict[str, int] = {}
+
+
+def timeframes() -> dict[str, int]:
+    """The timeframe map, built once the package is known to exist."""
+    if not _tf_cache and mt5 is not None:
+        for name in _TIMEFRAME_NAMES:
+            _tf_cache[name] = getattr(mt5, f"TIMEFRAME_{name}")
+    return _tf_cache
 
 
 def connect(login: int | None, password: str | None, server: str | None) -> tuple[bool, str]:
@@ -92,9 +97,9 @@ def candles(symbol: str, timeframe: str, start: int, end: int) -> dict[str, Any]
     than trusting the dtype order, because a mis-ordered array would produce a chart with the
     open and close swapped — which looks plausible and is completely wrong.
     """
-    tf = TIMEFRAMES.get(timeframe.upper())
+    tf = timeframes().get(timeframe.upper())
     if tf is None:
-        return {"candles": [], "error": f"unknown timeframe {timeframe!r}; have {list(TIMEFRAMES)}"}
+        return {"candles": [], "error": f"unknown timeframe {timeframe!r}; have {list(timeframes())}"}
 
     # make the symbol visible in Market Watch, or copy_rates fails for a valid symbol
     if not mt5.symbol_select(symbol, True):
@@ -149,7 +154,7 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         if u.path == "/timeframes":
-            self._send(200, {"timeframes": list(TIMEFRAMES)})
+            self._send(200, {"timeframes": list(timeframes())})
             return
 
         if u.path == "/symbols":
@@ -180,6 +185,111 @@ class Handler(BaseHTTPRequestHandler):
         self._send(405, {"error": "the bridge is read-only; log in with the terminal or --login"})
 
 
+def selftest() -> int:
+    """
+    Check everything, in order, and report. Never raises.
+
+    Order matters: each step depends on the previous one, so the first failure is the real
+    problem and everything after it is a consequence. Saying "no bars" when the actual problem
+    is a missing package would send the user looking in the wrong place.
+    """
+    print("=" * 62)
+    print("MT5 BRIDGE SELF-TEST")
+    print("=" * 62)
+
+    checks: list[tuple[str, bool, str]] = []
+
+    # 1. platform
+    is_windows = sys.platform.startswith("win")
+    checks.append((
+        "Windows",
+        is_windows,
+        "yes" if is_windows else f"no ({sys.platform}) — MetaTrader5 is a Windows-only build",
+    ))
+
+    # 2. python version, since the wheel is per-version
+    v = f"{sys.version_info.major}.{sys.version_info.minor}"
+    checks.append(("Python " + v, True, "cp" + v.replace(".", "")))
+
+    # 3. the package
+    checks.append((
+        "MetaTrader5 package",
+        mt5 is not None,
+        "imported" if mt5 is not None else f"missing: {MT5_IMPORT_ERROR}",
+    ))
+    if mt5 is None:
+        _report(checks)
+        print()
+        print("STOP HERE: without the package nothing else can be tested.")
+        print("  On Windows:  pip install MetaTrader5")
+        print("  On Linux:    not possible — this needs a Windows machine or VM.")
+        return 1
+
+    # 4. is a terminal running and logged in?
+    #    initialize() with no arguments attaches to whatever the terminal is doing, which is
+    #    why it is tried FIRST: if this works, no credentials are needed at all.
+    attached = mt5.initialize()
+    info = mt5.account_info() if attached else None
+    checks.append((
+        "terminal already running and logged in",
+        attached and info is not None,
+        (f"{info.server} #{info.login}" if info is not None
+         else f"no ({mt5.last_error()}) — start MetaTrader and log in, then retry"),
+    ))
+
+    if info is None:
+        _report(checks)
+        print()
+        print("The cleanest fix: open MetaTrader, log in to the demo account by hand,")
+        print("then run this script with no arguments. Credentials are then not needed.")
+        print("Or pass --login --password --server to let the script log in.")
+        return 1
+
+    # 5. can it see symbols at all?
+    syms = mt5.symbols_get() or []
+    checks.append(("symbols visible", len(syms) > 0, f"{len(syms)} symbols"))
+
+    # 6. the real test: can it read EURUSD M1 bars?
+    if syms:
+        mt5.symbol_select("EURUSD", True)
+        from_dt = datetime(2024, 1, 2, tzinfo=timezone.utc)
+        to_dt = datetime(2024, 1, 3, tzinfo=timezone.utc)
+        rates = mt5.copy_rates_range("EURUSD", mt5.TIMEFRAME_M1, from_dt, to_dt)
+        n = 0 if rates is None else len(rates)
+        checks.append((
+            "EURUSD M1 bars (2024-01-02)",
+            n > 0,
+            f"{n} bars" + ("" if n else f" — {mt5.last_error()}"),
+        ))
+        if n > 0:
+            r = rates[0]
+            checks.append((
+                "bar prices plausible",
+                # a wrong symbol or a broken broker feed gives 0 or a giant number
+                0.5 < float(r["open"]) < 2.0,
+                f"first open {float(r['open']):.5f}",
+            ))
+
+    _report(checks)
+    mt5.shutdown()
+
+    failed = [c for c in checks if not c[1]]
+    if failed:
+        print()
+        print(f"{len(failed)} check(s) failed — see above.")
+        return 1
+    print()
+    print("ALL CHECKS PASSED. Start the bridge:")
+    print("  python mt5-bridge.py")
+    return 0
+
+
+def _report(checks: list[tuple[str, bool, str]]) -> None:
+    for name, ok, detail in checks:
+        mark = "PASS" if ok else "FAIL"
+        print(f"  [{mark}] {name:42} {detail}")
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="Read-only MT4/MT5 candle bridge")
     ap.add_argument("--login", type=int, default=None, help="account number")
@@ -187,7 +297,19 @@ def main() -> int:
     ap.add_argument("--server", default=None, help="broker server, e.g. ICMarkets-Demo")
     ap.add_argument("--port", type=int, default=8765)
     ap.add_argument("--host", default="127.0.0.1", help="bind address; keep it on localhost")
+    ap.add_argument("--selftest", action="store_true",
+                    help="check every dependency and report, without starting the server")
     args = ap.parse_args()
+
+    if args.selftest:
+        return selftest()
+
+    if mt5 is None:
+        print(f"ERROR: MetaTrader5 is not available: {MT5_IMPORT_ERROR}", file=sys.stderr)
+        print("  On Windows: pip install MetaTrader5", file=sys.stderr)
+        print("  On Linux: this package ships win_amd64 wheels only.", file=sys.stderr)
+        print("  Run with --selftest to see the full diagnosis.", file=sys.stderr)
+        return 1
 
     ok, msg = connect(args.login, args.password, args.server)
     if not ok:
