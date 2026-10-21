@@ -92,6 +92,13 @@ app.whenReady().then(() => {
     return { ok: true };
   });
 
+  ipcMain.handle("db:loadToolConfigs", () =>
+    db?.loadToolConfigs() ?? { raw: null, updatedAt: null });
+  ipcMain.handle("db:saveToolConfigs", (_e, configs: unknown) => {
+    db?.saveToolConfigs(configs);
+    return { ok: true };
+  });
+
   ipcMain.handle("db:loadLiveSession", (_e, workspace: string) =>
     db?.loadLiveSession(workspace) ?? { raw: null, updatedAt: null });
   ipcMain.handle("db:saveLiveSession", (_e, workspace: string, state: unknown) => {

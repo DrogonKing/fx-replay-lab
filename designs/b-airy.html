@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<title>FX Replay Lab — design B: airy modern</title>
+<style>
+:root{
+  --bg:#0a0d13; --surface:#111621; --surface-2:#161d2b; --line:#1e2634;
+  --text:#eef1f6; --muted:#7c879b; --accent:#5b8def; --accent-2:#7aa2ff;
+  --up:#22c55e; --down:#f05252;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;background:var(--bg);color:var(--text);
+  font:13.5px/1.5 "Inter",-apple-system,"Segoe UI",Roboto,sans-serif;
+  -webkit-font-smoothing:antialiased}
+.app{display:grid;height:100%;
+  grid-template-columns:1fr 360px;
+  grid-template-rows:52px 1fr;
+  grid-template-areas:"top top" "chart side"}
+
+/* ---------- toolbar: grouped, breathing ---------- */
+.top{grid-area:top;background:var(--surface);border-bottom:1px solid var(--line);
+  display:flex;align-items:center;gap:14px;padding:0 16px}
+.brand{display:flex;align-items:center;gap:9px;font-weight:700;font-size:14px;
+  letter-spacing:-.2px}
+.brand .mark{width:22px;height:22px;border-radius:6px;
+  background:linear-gradient(135deg,var(--accent),#8b5cf6);display:grid;place-items:center;
+  font-size:11px;color:#fff;font-weight:800}
+.group{display:flex;align-items:center;gap:2px;background:var(--surface-2);
+  border:1px solid var(--line);border-radius:8px;padding:3px}
+.group .g{padding:4px 10px;border-radius:6px;color:var(--muted);font-size:12px;
+  cursor:pointer;white-space:nowrap}
+.group .g:hover{color:var(--text);background:#1d2534}
+.group .g.on{background:var(--accent);color:#fff;font-weight:600}
+.grow{flex:1}
+.ghost{height:30px;padding:0 12px;border-radius:7px;border:1px solid var(--line);
+  background:transparent;color:var(--text);font:inherit;font-size:12.5px;cursor:pointer}
+.ghost:hover{background:var(--surface-2)}
+.solid{height:30px;padding:0 14px;border-radius:7px;border:none;
+  background:var(--accent);color:#fff;font:inherit;font-size:12.5px;font-weight:600;
+  cursor:pointer;box-shadow:0 1px 2px #0006}
+.solid:hover{background:var(--accent-2)}
+
+/* ---------- chart ---------- */
+.chart{grid-area:chart;position:relative;overflow:hidden;background:var(--bg)}
+.legend{position:absolute;top:16px;left:20px;display:flex;align-items:center;gap:12px;z-index:2}
+.legend .sym{font-size:15px;font-weight:700;letter-spacing:-.2px}
+.legend .chip{font-size:10.5px;color:var(--accent-2);background:#5b8def1f;
+  border-radius:4px;padding:2px 6px;font-weight:600}
+.legend .ohlc{font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
+.legend .ohlc b{color:var(--text);font-weight:600}
+.candles{position:absolute;inset:0}
+.px{position:absolute;right:0;top:0;bottom:0;width:82px;
+  display:flex;flex-direction:column;justify-content:space-around;
+  padding:20px 12px 30px;font-size:11.5px;color:var(--muted);
+  font-variant-numeric:tabular-nums;text-align:right}
+.tag{position:absolute;right:82px;padding:3px 9px;border-radius:5px;font-size:11.5px;
+  font-weight:700;font-variant-numeric:tabular-nums;color:#fff;
+  background:var(--up);box-shadow:0 2px 8px #0007}
+.taxis{position:absolute;left:0;right:82px;bottom:0;height:28px;
+  display:flex;justify-content:space-between;align-items:center;
+  padding:0 14px;font-size:10.5px;color:var(--muted)}
+
+/* ---------- side ---------- */
+.side{grid-area:side;background:var(--surface);border-left:1px solid var(--line);
+  display:flex;flex-direction:column;min-height:0}
+.tabs{display:flex;gap:6px;padding:14px 14px 0}
+.tab{flex:1;height:32px;border-radius:7px;border:1px solid transparent;
+  background:transparent;color:var(--muted);font:inherit;font-size:11.5px;cursor:pointer}
+.tab:hover{color:var(--text);background:var(--surface-2)}
+.tab.on{background:var(--surface-2);border-color:var(--line);color:var(--text);font-weight:600}
+.sbody{padding:14px;overflow-y:auto;display:flex;flex-direction:column;gap:12px}
+.sbody::-webkit-scrollbar{width:8px}
+.sbody::-webkit-scrollbar-thumb{background:#232c3c;border-radius:4px}
+
+.card{background:var(--surface-2);border:1px solid var(--line);border-radius:12px;padding:16px}
+.card h4{font-size:10.5px;letter-spacing:.9px;text-transform:uppercase;color:var(--muted);
+  margin-bottom:12px;font-weight:600}
+.hero{display:flex;align-items:flex-end;gap:10px}
+.big{font-size:32px;font-weight:700;letter-spacing:-1px;font-variant-numeric:tabular-nums;
+  line-height:1}
+.delta{font-size:12px;font-weight:600;padding:2px 7px;border-radius:5px;
+  background:#22c55e1f;color:var(--up);margin-bottom:3px}
+.up{color:var(--up)}.down{color:var(--down)}
+
+.rows{display:flex;flex-direction:column;gap:2px;margin-top:14px}
+.row{display:flex;justify-content:space-between;padding:7px 0;font-size:12.5px}
+.row span{color:var(--muted)}
+.row b{font-variant-numeric:tabular-nums}
+
+.cal{display:grid;grid-template-columns:repeat(7,1fr);gap:5px}
+.cal .dow{color:var(--muted);text-align:center;font-size:10px;padding-bottom:4px}
+.cal .d{aspect-ratio:1;border-radius:8px;display:grid;place-items:center;
+  background:#1a2130;color:var(--muted);font-size:11px}
+.cal .d.w{background:#12341f;color:#5ee08a}
+.cal .d.l{background:#3a1a1c;color:#ff8f8f}
+.cal .d.big{background:var(--up);color:#04140a;font-weight:800}
+
+.legendbar{display:flex;gap:14px;font-size:10.5px;color:var(--muted);flex-wrap:wrap;
+  margin-top:12px}
+.legendbar i{width:9px;height:9px;border-radius:3px;display:inline-block;margin-right:4px}
+
+.charttoggle{position:absolute;bottom:44px;left:20px;display:flex;gap:2px;
+  background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:3px;z-index:2}
+.charttoggle .c{padding:3px 9px;border-radius:6px;font-size:11px;color:var(--muted);cursor:pointer}
+.charttoggle .c.on{background:var(--surface-2);color:var(--text)}
+</style></head>
+<body><div class="app">
+
+  <header class="top">
+    <div class="brand"><span class="mark">FX</span>Replay Lab</div>
+    <div class="group">
+      <div class="g on">M5</div><div class="g">M15</div><div class="g">H1</div><div class="g">H4</div>
+      <div class="g">D1</div>
+    </div>
+    <div class="group">
+      <div class="g on">Candles</div><div class="g">Bars</div><div class="g">Line</div>
+    </div>
+    <div class="group">
+      <div class="g">Indicators</div><div class="g">Draw</div>
+    </div>
+    <div class="grow"></div>
+    <button class="ghost">⏮</button>
+    <button class="ghost">▶ Play</button>
+    <button class="ghost">10×</button>
+    <button class="solid">Buy</button>
+  </header>
+
+  <main class="chart">
+    <div class="legend">
+      <span class="sym">XAUUSD</span>
+      <span class="chip">M5 · UTC</span>
+      <span class="ohlc">O <b>1990.76</b> H <b>1993.19</b> L <b>1989.63</b> C <b>1991.71</b></span>
+    </div>
+    <svg class="candles" viewBox="0 0 960 600" preserveAspectRatio="none">
+      <g stroke="#22c55e" fill="#22c55e">
+        <rect x="50" y="450" width="6" height="54"/><rect x="76" y="428" width="6" height="72"/>
+        <rect x="102" y="408" width="6" height="82"/><rect x="154" y="366" width="6" height="64"/>
+        <rect x="180" y="342" width="6" height="76"/><rect x="206" y="312" width="6" height="88"/>
+        <rect x="258" y="278" width="6" height="72"/><rect x="284" y="256" width="6" height="84"/>
+        <rect x="336" y="300" width="6" height="60"/><rect x="388" y="342" width="6" height="68"/>
+        <rect x="466" y="406" width="6" height="74"/><rect x="518" y="378" width="6" height="66"/>
+        <rect x="596" y="342" width="6" height="82"/><rect x="648" y="308" width="6" height="76"/>
+        <rect x="726" y="276" width="6" height="90"/><rect x="778" y="250" width="6" height="72"/>
+        <rect x="856" y="286" width="6" height="66"/><rect x="908" y="312" width="6" height="80"/>
+      </g>
+      <g stroke="#f05252" fill="#f05252">
+        <rect x="128" y="386" width="6" height="48"/><rect x="232" y="350" width="6" height="54"/>
+        <rect x="310" y="280" width="6" height="60"/><rect x="362" y="324" width="6" height="64"/>
+        <rect x="414" y="362" width="6" height="56"/><rect x="440" y="382" width="6" height="50"/>
+        <rect x="492" y="396" width="6" height="60"/><rect x="544" y="358" width="6" height="54"/>
+        <rect x="570" y="370" width="6" height="46"/><rect x="622" y="328" width="6" height="58"/>
+        <rect x="674" y="296" width="6" height="52"/><rect x="700" y="312" width="6" height="48"/>
+        <rect x="752" y="262" width="6" height="56"/><rect x="804" y="268" width="6" height="50"/>
+        <rect x="830" y="282" width="6" height="44"/><rect x="882" y="300" width="6" height="52"/>
+      </g>
+      <path d="M50 472 L128 410 L206 330 L284 300 L362 352 L440 424 L518 384 L596 340 L674 278 L752 306 L830 352 L908 366"
+        fill="none" stroke="#5b8def" stroke-width="2" opacity=".85"/>
+      <line x1="0" y1="364" x2="960" y2="364" stroke="#22c55e" stroke-dasharray="3 5" opacity=".5"/>
+    </svg>
+    <div class="tag" style="top:354px">1991.71</div>
+    <div class="px">
+      <span>2040.00</span><span>2032.00</span><span>2024.00</span><span>2016.00</span>
+      <span>2008.00</span><span>2000.00</span><span>1992.00</span><span>1984.00</span>
+      <span>1976.00</span><span>1968.00</span>
+    </div>
+    <div class="taxis">
+      <span>03:00</span><span>06:00</span><span>09:00</span><span>12:00</span>
+      <span>15:00</span><span>18:00</span><span>21:00</span><span>Wed 3</span><span>03:00</span>
+    </div>
+    <div class="charttoggle">
+      <div class="c on">1m</div><div class="c">5m</div><div class="c">1h</div><div class="c">1d</div>
+    </div>
+  </main>
+
+  <aside class="side">
+    <div class="tabs">
+      <button class="tab on">Journal</button>
+      <button class="tab">Equity</button>
+      <button class="tab">Trades</button>
+      <button class="tab">Data</button>
+    </div>
+    <div class="sbody">
+      <div class="card">
+        <h4>Net R · January</h4>
+        <div class="hero">
+          <span class="big up">+0.64</span>
+          <span class="delta">+0.16 avg</span>
+        </div>
+        <div class="rows">
+          <div class="row"><span>trades</span><b>4</b></div>
+          <div class="row"><span>win rate</span><b>75.0%</b></div>
+          <div class="row"><span>worst day</span><b class="down">-0.34R</b></div>
+          <div class="row"><span>losing run</span><b>1 day</b></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h4>January 2024</h4>
+        <div class="cal">
+          <div class="dow">M</div><div class="dow">T</div><div class="dow">W</div>
+          <div class="dow">T</div><div class="dow">F</div><div class="dow">S</div><div class="dow">S</div>
+          <div class="d"></div><div class="d">1</div><div class="d w">2</div><div class="d l">3</div>
+          <div class="d w">4</div><div class="d">5</div><div class="d">6</div>
+          <div class="d">7</div><div class="d">8</div><div class="d big">9</div><div class="d">10</div>
+          <div class="d">11</div><div class="d">12</div><div class="d">13</div>
+          <div class="d">14</div><div class="d">15</div><div class="d">16</div><div class="d">17</div>
+          <div class="d">18</div><div class="d">19</div><div class="d">20</div>
+        </div>
+        <div class="legendbar">
+          <span><i style="background:#22c55e"></i>+2R</span>
+          <span><i style="background:#12341f"></i>win</span>
+          <span><i style="background:#3a1a1c"></i>loss</span>
+        </div>
+      </div>
+    </div>
+  </aside>
+</div></body></html>

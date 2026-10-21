@@ -1,129 +1,108 @@
-# Drawing tools
+# The drawing rail, and per-tool customisation
 
-Every tool below is implemented in `src/core/drawings-ext.ts` (geometry) and
-`src/core/drawing-interaction.ts` (behaviour), rendered by
-`src/renderer/overlay.ts`. None of them is a placeholder.
+## The rail follows TradingView's order, not ours
 
-**Geometry is verified by tests.** `tests/drawings-ext.test.ts` (43 tests) and
-`tests/drawing-interaction.test.ts` (34 tests) assert things like "a Fib
-retracement 0 level equals the impulse end", "the pitchfork median passes through
-the midpoint of B and C", and "an XABCD whose AD/XA leaves 0.786-0.886 is
-rejected". `scripts/draw-smoke.sh` then drives **real pointer events** in the
-running app and counts painted pixels, so a shape that exists in the model but
-never reaches the canvas fails the test.
+The order and grouping in `TOOL_GROUPS` are TradingView's, deliberately. A user arriving from
+that platform reaches for a tool where their hand expects it. Reordering these for tidiness
+would break the only thing the rail has going for it, which is muscle memory.
 
-## How to use
+Top to bottom, matching the reference layout:
 
-Pick a tool from the left rail → the rail groups icons into 9 flyouts. Esc returns
-to the cursor. Undo is Ctrl+Z, redo Ctrl+Shift+Z, delete-all is the bin.
+| # | Entry | Family | Chevron |
+|---|---|---|---|
+| 1 | cursor / crosshair | — | no |
+| 2 | `╱` trend line | Lines | yes |
+| 3 | `𝑓` fibonacci | Fibonacci | yes |
+| 4 | `✎` brush | Brush | yes |
+| 5 | `➤` arrows | Arrows & Patterns | yes |
+| 6 | `⊞` projection | Projection | yes |
+| 7 | `T` text | Text | yes |
+| 8 | `☺` icons | Icons | yes |
+| 9 | `▭` shapes | Shapes | yes |
+| 10 | `⇕` measure | Measure | yes |
+| 11 | `⤢` zoom in | — | no |
+| 12 | `∪` magnet | — | no |
+| 13 | lock | — | no |
+| 14 | hide | — | no |
+| 15 | delete | — | no |
+| — | gap | | |
+| ★ | favourites | — | no |
 
-| Interaction | Tools |
-|---|---|
-| **click once** | horizontal line, vertical line, horizontal ray, text, note, callout, price label, arrow marker, flag, comment, signpost, balloon |
-| **click-drag** | trend line, ray, extended line, rectangle, rotated rectangle, ellipse, circle, arc, curve, Fib retracement, Fib extension, long/short position, projection, date range, price range, date+price range, measure, arrow |
-| **3 clicks** | parallel channel, pitchfork, fib channel, gann fan, gann box, triangle, fib wedge |
-| **5 clicks** | XABCD, ABCD, triangle pattern, head & shoulders |
-| **6 clicks** | three drives, Elliott impulse, cypher, bat, crab, butterfly, shark |
+Chevrons appear only on the grouped families, exactly as in the reference: a chevron on a
+plain toggle would promise a menu that does not exist.
 
-## Lines
+## 90 tools, all of them real
 
-| Tool | Behaviour |
-|---|---|
-| Trend Line | segment between two points |
-| Horizontal Line | full-width line at a price, labelled with the price |
-| Vertical Line | full-height line at a time |
-| Ray | starts at A, extends through B to the right edge |
-| Extended Line | extends both directions |
-| Trend Angle | drag then read/adjust the angle in screen degrees |
-| Cross Line | one horizontal + one vertical through the same point |
-| Horizontal Ray | starts at A, extends right only |
+The list grew from 65 to 90. Every entry is a kind in `DrawingKind` and draws something; a
+button that silently does nothing is worse than a missing button. The additions cover the
+gaps against TradingView:
 
-## Channels
+- **Lines** — info line, flat top/bottom, disjoint channel, Schiff / Modified Schiff / inside
+  pitchfork
+- **Fibonacci** — trend-based fib time, fib circles, fib spiral, Gann square (free and fixed),
+  Gann fan (fixed), pitchfan
+- **Brush** — highlighter, ellipse arc
+- **Shapes** — rotated ellipse, star, arrow shape
+- **Text** — anchored text, anchored note, table
+- **Icons** — emoji, sticker, image
+- **Projection** — price range %, date and price range %
+- **Patterns** — 5-0, bars pattern
 
-| Tool | Behaviour |
-|---|---|
-| Parallel Channel | base line A→B, parallel through C, filled band |
-| Pitchfork | median from the pivot through the midpoint of B and C, parallels through B and C |
-| Regression Trend | best-fit line over the span with upper/lower bands |
-| Fib Channel | Fib levels drawn as parallels of A→B anchored on C |
+## Customising a tool
 
-## Shapes
+Colour, width (1–4), line style (solid / dashed / dotted), line opacity, fill and fill
+opacity, plus **which timeframes the tool appears on**. Reached from the gear in any tool menu,
+or right-clicking a family.
 
-Rectangle, rotated rectangle, ellipse, circle, triangle, arc, curve, polygon.
-Rectangles and ellipses are defined by two corner points and hit-tested on their
-**border**, not their interior, so a click inside can still pan the chart.
+### The timeframe filter is the feature that earns its place
 
-## Fibonacci
+A weekly pivot or a swing tool is noise on a 1-minute chart. Being able to say so once — rather
+than remembering to ignore it — is what turns a 90-tool rail into a usable one. An empty list
+means every timeframe; a family whose every tool is filtered out disappears from the rail
+entirely.
 
-| Tool | Output |
-|---|---|
-| Fib Retracement | 7 levels: 0, 0.236, 0.382, 0.5, 0.618, 0.786, 1 — each labelled with ratio and price |
-| Fib Extension | 0, 0.618, 1, 1.272, 1.618, 2, 2.618, 3.618, 4.236 |
-| Fib Time Zone | vertical lines at Fib multiples of the A→B time span |
-| Fib Speed Fan | fan of Fib-slope rays from A |
-| Fib Arcs | concentric arcs at Fib radii |
-| Fib Wedge | three-ray wedge with Fib spacing |
+Verified live: scoping Trend Line to D1 gives **16 items on M5** (Trend Line absent, the other
+16 Line tools present) and **17 on D1**.
 
-Levels are computed as `b.price - (b.price - a.price) * level`, so level 0 is the
-impulse end and level 1 is its origin.
+### Precedence
 
-## Gann
+An explicit per-drawing value beats the tool default, which beats the shipped default.
+`styleFor()` implements exactly that. Reading the tool default first here would make every new
+drawing ignore the colour the user just chose.
 
-| Tool | Behaviour |
-|---|---|
-| Gann Fan | 7 rays at 7.5°, 15°, 26.25°, 45°, 63.75°, 75°, 82.5° |
-| Gann Box | price/time square with the internal Gann divisions |
+## Persistence stores only what changed
 
-## Patterns
+`serialiseConfigs()` writes only tools where `isDefault === false`. Two reasons:
 
-Patterns do more than draw: they **validate**.
+1. Storing all 90 defaults means a future change to a default never reaches an existing user,
+   because their stored copy wins forever.
+2. A new tool added in an update appears with its default instead of being invisible until the
+   user resets everything — which is why `mergeConfigs()` merges rather than replaces.
 
-- **XABCD** computes AB/XA, BC/AB, CD/BC and AD/XA and reports which ratio left its
-  tolerance band. Defaults follow the common convention: AB/XA 0.382-0.618,
-  BC/AB 0.382-0.886, CD/BC 1.13-2.618, AD/XA 0.786-0.886.
-- **ABCD**, **triangle**, **head & shoulders**, **three drives** draw their
-  structure and label the legs.
-- **Elliott Impulse** checks the three rules that matter: wave 3 is never the
-  shortest of 1/3/5, wave 2 never retraces past the start of wave 1, and wave 4
-  never overlaps wave 1.
-- **Harmonics** (cypher, bat, crab, butterfly, shark) draw their ratio legs.
+Stored in SQLite `settings` under key `tool_configs` (schema v3's `updated_at` column).
 
-A pattern that fails validation still draws — it is reported, not hidden, because
-seeing *why* it fails is the point.
+## Rendering honours the style
 
-## Forecast and risk
+Three things had to carry the style all the way to the canvas, and each was a silent no-op
+before:
 
-| Tool | Output |
-|---|---|
-| Long / Short Position | entry, stop, target box with **R multiple** |
-| Projection | projected path box |
-| Date Range | bar count and elapsed time |
-| Price Range | price delta and percent |
-| Date and Price Range | both |
-| Ghost Feed | dashed projected bars |
+- `Drawing.style / opacity / fillOpacity` — captured when the drawing is made
+- `RenderShape.lineStyle / opacity / fillOpacity` — carried to the overlay
+- `InteractionState.style` — widened from `{color, width}` to the full style, so a dashed or
+  60%-opaque tool is not narrowed back to a plain line
 
-The position tools also compute money at risk for a given lot size:
-`risk × lots × contractSize`, so a 0.10-lot gold trade with a $10 stop shows $100.
+A line's own `dashed` flag still wins over the tool style, because projection legs are always
+dashed by design.
 
-## Annotation
+## Tests
 
-Text, note, callout, price label, arrow, arrow marker, flag, comment, signpost,
-balloon. All anchor to a data point and stay correct across zoom and timeframe
-changes.
+`tests/tool-config.test.ts` — 39 tests. The ones that matter:
 
-## Measure
+- an explicit override wins over the tool default
+- a new tool still appears after an update (merge, not replace)
+- drawdown-style clamping: width to 1–4, opacity to 0–1, non-hex colours rejected
+- `dashPattern` scales with width, so a thick dashed line stays dashed
+- `serialiseConfigs` writes nothing when nothing changed
+- round-trip: serialise → merge → same config
 
-Click-drag to see `Δprice (Δ%)` and elapsed seconds. Bar count needs the active
-timeframe, which the caller supplies.
-
-## Persistence
-
-**Not yet.** Drawings live in memory for the session. The SQLite schema has a
-`workspaces` table ready for them; wiring it is the remaining work. This is stated
-in `docs/CHECKLIST.md` rather than left for you to discover.
-
-## Coordinate space
-
-Everything is stored as `{time, price}` in UTC epoch seconds, never pixels. That is
-why a drawing survives zooming, changing timeframe, resizing the window, and
-switching timezone — the pixels are recomputed on every frame from the data.
+Live smoke: `scripts/tools-smoke.sh` — 7/7.

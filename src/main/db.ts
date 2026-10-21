@@ -77,6 +77,10 @@ export interface Db {
   loadSymbols(): RawLoadResult;
   saveSymbols(symbols: unknown): void;
 
+  // per-tool drawing style and visibility
+  loadToolConfigs(): RawLoadResult;
+  saveToolConfigs(configs: unknown): void;
+
   // economic calendar: one snapshot, replaced on every import
   saveNews(events: readonly NewsRow[]): number;
   loadNews(): NewsRow[];
@@ -323,6 +327,21 @@ export function openDatabase(file: string): Db {
          ON CONFLICT(key) DO UPDATE SET value = excluded.value,
                                         updated_at = excluded.updated_at`,
       ).run(JSON.stringify(symbols), Date.now());
+    },
+
+    loadToolConfigs: () => {
+      const row = raw
+        .prepare("SELECT value, updated_at FROM settings WHERE key = 'tool_configs'")
+        .get() as { value: string; updated_at: number } | undefined;
+      if (!row) return { raw: null, updatedAt: null };
+      return { raw: row.value, updatedAt: row.updated_at };
+    },
+    saveToolConfigs: (configs) => {
+      raw.prepare(
+        `INSERT INTO settings (key, value, updated_at) VALUES ('tool_configs', ?, ?)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value,
+                                        updated_at = excluded.updated_at`,
+      ).run(JSON.stringify(configs), Date.now());
     },
 
     saveNews: (events) => {

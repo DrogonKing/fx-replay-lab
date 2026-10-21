@@ -22,17 +22,24 @@ export type DrawingKind =
   // lines
   | "trendline" | "hline" | "vline" | "ray" | "extended-line" | "cross-line"
   | "trend-angle" | "horizontal-ray"
+  | "info-line" | "trend-based-fib-time"
   // channels
   | "channel" | "pitchfork" | "regression-trend"
+  | "flat-top-bottom" | "disjoint-channel" | "schiff-pitchfork"
+  | "modified-schiff-pitchfork" | "inside-pitchfork"
   // shapes
   | "rectangle" | "rotated-rectangle" | "ellipse" | "circle" | "triangle"
   | "arc" | "curve" | "path" | "polygon" | "double-curve"
+  | "ellipse-arc" | "rotated-ellipse" | "star" | "arrow-shape" | "highlighter"
   // fib / gann
   | "fib-retracement" | "fib-extension" | "fib-channel" | "fib-time-zone"
   | "fib-speed-fan" | "fib-arcs" | "fib-wedge" | "gann-fan" | "gann-box"
+  | "fib-trend-extension" | "fib-circles" | "fib-spiral" | "gann-square"
+  | "gann-square-fixed" | "gann-fan-fixed" | "pitchfan" | "fib-retracement-time"
   // annotations
   | "text" | "note" | "callout" | "price-label" | "arrow" | "arrow-marker"
   | "flag" | "comment" | "signpost" | "balloon"
+  | "table" | "image" | "sticker" | "emoji" | "anchored-note" | "anchored-text"
   // patterns
   | "xabcd" | "abcd" | "triangle-pattern" | "three-drives" | "head-shoulders"
   | "elliott-impulse" | "elliott-correction" | "cypher" | "bat" | "crab"
@@ -41,7 +48,8 @@ export type DrawingKind =
   | "long-position" | "short-position" | "projection" | "date-range"
   | "price-range" | "date-price-range" | "ghost-feed"
   // measurement
-  | "measure" | "zoom-in";
+  | "measure" | "zoom-in"
+  | "price-range-pct" | "date-price-range-pct" | "bars-pattern";
 
 export interface Point {
   /** UTC epoch seconds */
@@ -66,6 +74,10 @@ export interface Drawing {
   locked?: boolean;
   /** optional per-drawing opacity 0..1 */
   opacity?: number;
+  /** line style captured from the tool's settings when the drawing was made */
+  style?: "solid" | "dashed" | "dotted";
+  /** fill opacity for a shape; independent of the line opacity */
+  fillOpacity?: number;
 }
 
 export const FIB_LEVELS = [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1];

@@ -1,0 +1,249 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<title>FX Replay Lab — design A: dense terminal</title>
+<style>
+:root{
+  --bg:#0d1017; --panel:#151a23; --panel-2:#1b212c; --line:#242b36;
+  --text:#e6e9ef; --muted:#8b93a3; --accent:#f0b90b;
+  --up:#26a69a; --down:#ef5350;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;background:var(--bg);color:var(--text);
+  font:13px/1.45 "Inter",-apple-system,"Segoe UI",Roboto,sans-serif;
+  -webkit-font-smoothing:antialiased}
+.app{display:grid;height:100%;
+  grid-template-columns:44px 1fr 320px;
+  grid-template-rows:40px 1fr 26px;
+  grid-template-areas:"bar top top" "bar chart side" "bar foot foot"}
+
+/* ---------- left tool rail ---------- */
+.bar{grid-area:bar;background:var(--panel);border-right:1px solid var(--line);
+  display:flex;flex-direction:column;align-items:center;padding:6px 0;gap:2px}
+.bar .ic{width:32px;height:32px;display:grid;place-items:center;border-radius:6px;
+  color:var(--muted);font-size:14px;cursor:pointer;position:relative}
+.bar .ic:hover{background:var(--panel-2);color:var(--text)}
+.bar .ic.on{background:#2a2410;color:var(--accent)}
+.bar .ic.on::before{content:"";position:absolute;left:-6px;top:8px;bottom:8px;width:2px;
+  background:var(--accent);border-radius:2px}
+.bar .sep{width:20px;height:1px;background:var(--line);margin:4px 0}
+.bar .grow{flex:1}
+
+/* ---------- toolbar ---------- */
+.top{grid-area:top;background:var(--panel);border-bottom:1px solid var(--line);
+  display:flex;align-items:center;gap:10px;padding:0 12px}
+.brand{color:var(--accent);font-weight:700;font-size:13px;letter-spacing:.3px;
+  display:flex;align-items:center;gap:7px}
+.brand i{width:16px;height:16px;border-radius:4px;background:var(--accent);display:block;
+  position:relative}
+.brand i::after{content:"";position:absolute;inset:4px;border-radius:2px;background:var(--panel)}
+.pill{display:flex;align-items:center;gap:6px;height:26px;padding:0 9px;
+  background:var(--panel-2);border:1px solid var(--line);border-radius:5px;
+  color:var(--text);font-size:12px;cursor:pointer;white-space:nowrap}
+.pill:hover{border-color:#39414f}
+.pill .lab{color:var(--muted);font-size:11px}
+.pill b{font-weight:600}
+.pill .car{color:var(--muted);font-size:9px}
+.dotlive{width:6px;height:6px;border-radius:50%;background:var(--up);
+  box-shadow:0 0 0 3px #26a69a22}
+.grow{flex:1}
+.btn{height:26px;padding:0 11px;border-radius:5px;border:1px solid var(--line);
+  background:var(--panel-2);color:var(--text);font:inherit;font-size:12px;cursor:pointer}
+.btn:hover{background:#232a36}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#151a23;font-weight:600}
+.btn.primary:hover{background:#f7c41f}
+
+/* ---------- chart ---------- */
+.chart{grid-area:chart;position:relative;overflow:hidden;
+  background:
+    linear-gradient(var(--line) 1px,transparent 1px) 0 0/100% 64px,
+    linear-gradient(90deg,var(--line) 1px,transparent 1px) 0 0/88px 100%,
+    var(--bg)}
+.legend{position:absolute;top:10px;left:12px;display:flex;align-items:center;gap:9px;
+  font-size:12px;font-variant-numeric:tabular-nums;z-index:2}
+.legend .sym{font-weight:700;letter-spacing:.4px}
+.legend .tf{color:var(--muted);font-size:11px;border:1px solid var(--line);
+  border-radius:3px;padding:0 4px}
+.legend .ohlc{color:var(--muted)}
+.legend .ohlc b{color:var(--text);font-weight:600}
+.candles{position:absolute;inset:0}
+.px{position:absolute;right:0;top:0;bottom:0;width:74px;
+  border-left:1px solid var(--line);background:#11151d;
+  display:flex;flex-direction:column;justify-content:space-around;
+  padding:14px 8px 26px;font-size:11px;color:var(--muted);
+  font-variant-numeric:tabular-nums;text-align:right}
+.tag{position:absolute;right:74px;padding:2px 7px;border-radius:3px;font-size:11px;
+  font-weight:600;font-variant-numeric:tabular-nums;color:#0d1017}
+.tag.last{background:var(--accent)}
+.taxis{position:absolute;left:0;right:74px;bottom:0;height:24px;
+  border-top:1px solid var(--line);display:flex;justify-content:space-between;
+  align-items:center;padding:0 10px;font-size:10px;color:var(--muted)}
+
+/* ---------- right panel ---------- */
+.side{grid-area:side;background:var(--panel);border-left:1px solid var(--line);
+  display:flex;flex-direction:column;min-height:0}
+.tabs{display:flex;border-bottom:1px solid var(--line);padding:0 4px;gap:2px}
+.tab{flex:1;height:34px;background:none;border:none;border-bottom:2px solid transparent;
+  color:var(--muted);font:inherit;font-size:11px;cursor:pointer;letter-spacing:.2px}
+.tab:hover{color:var(--text)}
+.tab.on{color:var(--accent);border-bottom-color:var(--accent);font-weight:600}
+.sbody{padding:14px;overflow-y:auto;display:flex;flex-direction:column;gap:14px}
+.sbody::-webkit-scrollbar{width:6px}
+.sbody::-webkit-scrollbar-thumb{background:#2b3341;border-radius:3px}
+
+.card{background:var(--panel-2);border:1px solid var(--line);border-radius:7px;padding:12px}
+.card h4{font-size:10px;letter-spacing:.8px;text-transform:uppercase;color:var(--muted);
+  margin-bottom:10px;font-weight:600}
+.big{font-size:22px;font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:-.3px}
+.big small{font-size:12px;font-weight:500;color:var(--muted);margin-left:5px}
+.up{color:var(--up)}.down{color:var(--down)}
+
+.rows{display:flex;flex-direction:column;gap:1px}
+.row{display:flex;justify-content:space-between;align-items:baseline;
+  padding:6px 0;border-bottom:1px solid #1f2530;font-size:12px}
+.row:last-child{border-bottom:none}
+.row span{color:var(--muted)}
+.row b{font-variant-numeric:tabular-nums;font-weight:600}
+
+/* calendar */
+.cal{display:grid;grid-template-columns:repeat(7,1fr);gap:3px;font-size:10px}
+.cal .dow{color:var(--muted);text-align:center;font-size:9px;padding-bottom:2px}
+.cal .d{aspect-ratio:1;border-radius:4px;display:grid;place-items:center;
+  background:#1f2530;color:var(--muted);font-size:10px}
+.cal .d.w{background:#1d4d3c;color:#8de0c4}
+.cal .d.l{background:#4d2124;color:#f0a5a7}
+.cal .d.big{background:#2a7d5f;color:#c8f5e5;font-weight:700}
+
+.legendbar{display:flex;gap:10px;font-size:10px;color:var(--muted);flex-wrap:wrap}
+.legendbar i{width:8px;height:8px;border-radius:2px;display:inline-block;margin-right:3px}
+
+/* ---------- footer status ---------- */
+.foot{grid-area:foot;background:var(--panel);border-top:1px solid var(--line);
+  display:flex;align-items:center;gap:16px;padding:0 12px;font-size:11px;color:var(--muted)}
+.foot b{color:var(--text);font-weight:600}
+</style></head>
+<body><div class="app">
+
+  <nav class="bar">
+    <div class="ic on">⌖</div>
+    <div class="sep"></div>
+    <div class="ic">╱</div>
+    <div class="ic">▭</div>
+    <div class="ic">⌗</div>
+    <div class="ic">F</div>
+    <div class="ic">✎</div>
+    <div class="ic">T</div>
+    <div class="sep"></div>
+    <div class="ic">✂</div>
+    <div class="ic">⊙</div>
+    <div class="grow"></div>
+    <div class="ic">🔒</div>
+    <div class="ic">🗑</div>
+  </nav>
+
+  <header class="top">
+    <div class="brand"><i></i>FX Replay Lab</div>
+    <div class="pill"><span class="dotlive"></span>LIVE</div>
+    <div class="pill"><span class="lab">TF</span><b>M5</b><span class="car">▾</span></div>
+    <div class="pill"><span class="lab">Chart</span><b>Candles</b><span class="car">▾</span></div>
+    <div class="pill">log</div>
+    <div class="pill"><span class="lab">TZ</span><b>UTC</b><span class="car">▾</span></div>
+    <div class="grow"></div>
+    <div class="pill"><span class="lab">Speed</span><b>10×</b><span class="car">▾</span></div>
+    <button class="btn">▶ Play</button>
+    <button class="btn primary">+ Trade</button>
+  </header>
+
+  <main class="chart">
+    <div class="legend">
+      <span class="sym">XAUUSD</span>
+      <span class="tf">M5</span>
+      <span class="ohlc">O <b>1990.76</b> H <b>1993.19</b> L <b>1989.63</b> C <b>1991.71</b></span>
+    </div>
+    <svg class="candles" viewBox="0 0 900 560" preserveAspectRatio="none">
+      <g stroke="#26a69a" fill="#26a69a">
+        <rect x="40" y="430" width="7" height="52"/><rect x="62" y="410" width="7" height="70"/>
+        <rect x="84" y="392" width="7" height="80"/><rect x="128" y="352" width="7" height="62"/>
+        <rect x="150" y="330" width="7" height="74"/><rect x="172" y="300" width="7" height="86"/>
+        <rect x="216" y="268" width="7" height="70"/><rect x="238" y="246" width="7" height="82"/>
+        <rect x="282" y="290" width="7" height="58"/><rect x="326" y="330" width="7" height="66"/>
+        <rect x="392" y="392" width="7" height="72"/><rect x="436" y="366" width="7" height="64"/>
+        <rect x="502" y="330" width="7" height="80"/><rect x="546" y="298" width="7" height="74"/>
+        <rect x="612" y="268" width="7" height="88"/><rect x="656" y="242" width="7" height="70"/>
+        <rect x="722" y="276" width="7" height="64"/><rect x="766" y="300" width="7" height="78"/>
+      </g>
+      <g stroke="#ef5350" fill="#ef5350">
+        <rect x="106" y="368" width="7" height="46"/><rect x="194" y="336" width="7" height="52"/>
+        <rect x="260" y="268" width="7" height="58"/><rect x="304" y="312" width="7" height="62"/>
+        <rect x="348" y="348" width="7" height="54"/><rect x="370" y="366" width="7" height="48"/>
+        <rect x="414" y="380" width="7" height="58"/><rect x="458" y="344" width="7" height="52"/>
+        <rect x="480" y="356" width="7" height="44"/><rect x="524" y="316" width="7" height="56"/>
+        <rect x="568" y="286" width="7" height="50"/><rect x="590" y="300" width="7" height="46"/>
+        <rect x="634" y="252" width="7" height="54"/><rect x="678" y="258" width="7" height="48"/>
+        <rect x="700" y="270" width="7" height="42"/><rect x="744" y="288" width="7" height="50"/>
+        <rect x="788" y="310" width="7" height="46"/><rect x="810" y="322" width="7" height="40"/>
+      </g>
+      <path d="M40 452 L110 400 L180 320 L250 290 L320 340 L390 410 L460 372 L530 330 L600 288 L670 268 L740 300 L810 340"
+        fill="none" stroke="#f0b90b" stroke-width="2.5" opacity=".9"/>
+      <line x1="0" y1="352" x2="900" y2="352" stroke="#26a69a" stroke-dasharray="4 4" opacity=".55"/>
+    </svg>
+    <div class="tag last" style="top:344px">1991.71</div>
+    <div class="px">
+      <span>2040.00</span><span>2032.00</span><span>2024.00</span><span>2016.00</span>
+      <span>2008.00</span><span>2000.00</span><span>1992.00</span><span>1984.00</span>
+      <span>1976.00</span><span>1968.00</span>
+    </div>
+    <div class="taxis">
+      <span>03:00</span><span>06:00</span><span>09:00</span><span>12:00</span>
+      <span>15:00</span><span>18:00</span><span>21:00</span><span>Wed 3</span><span>03:00</span>
+    </div>
+  </main>
+
+  <aside class="side">
+    <div class="tabs">
+      <button class="tab on">Journal</button>
+      <button class="tab">Equity</button>
+      <button class="tab">Trades</button>
+      <button class="tab">Data</button>
+    </div>
+    <div class="sbody">
+      <div class="card">
+        <h4>Net R this month</h4>
+        <div class="big up">+0.64<small>R</small></div>
+        <div class="rows" style="margin-top:10px">
+          <div class="row"><span>trades</span><b>4</b></div>
+          <div class="row"><span>win rate</span><b>75.0%</b></div>
+          <div class="row"><span>avg R</span><b>+0.16</b></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h4>January 2024</h4>
+        <div class="cal">
+          <div class="dow">M</div><div class="dow">T</div><div class="dow">W</div>
+          <div class="dow">T</div><div class="dow">F</div><div class="dow">S</div><div class="dow">S</div>
+          <div class="d"></div><div class="d">1</div><div class="d w">2</div><div class="d l">3</div>
+          <div class="d w">4</div><div class="d">5</div><div class="d">6</div>
+          <div class="d">7</div><div class="d">8</div><div class="d big">9</div><div class="d">10</div>
+          <div class="d">11</div><div class="d">12</div><div class="d">13</div>
+          <div class="d">14</div><div class="d">15</div><div class="d">16</div><div class="d">17</div>
+          <div class="d">18</div><div class="d">19</div><div class="d">20</div>
+          <div class="d">21</div><div class="d">22</div><div class="d">23</div><div class="d">24</div>
+          <div class="d">25</div><div class="d">26</div><div class="d">27</div>
+        </div>
+        <div class="legendbar" style="margin-top:10px">
+          <span><i style="background:#2a7d5f"></i>+2R</span>
+          <span><i style="background:#1d4d3c"></i>win</span>
+          <span><i style="background:#4d2124"></i>loss</span>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <footer class="foot">
+    <span>bars <b>2,000</b></span>
+    <span>revealed <b>2,000</b></span>
+    <span>spread <b>0.20</b></span>
+    <span>commission <b>$3/lot</b></span>
+    <span style="margin-left:auto">offline · no network</span>
+  </footer>
+</div></body></html>

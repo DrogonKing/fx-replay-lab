@@ -1,0 +1,284 @@
+<!doctype html>
+<html lang="en" dir="ltr"><head><meta charset="utf-8">
+<title>FX Replay Lab — design C: tradingview-like</title>
+<style>
+:root{
+  --bg:#131722; --panel:#1e222d; --panel-2:#2a2e39; --line:#363a45;
+  --text:#d1d4dc; --muted:#787b86; --accent:#2962ff;
+  --up:#26a69a; --down:#ef5350;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;background:var(--bg);color:var(--text);
+  font:12px/1.4 "Trebuchet MS",-apple-system,"Segoe UI",Roboto,sans-serif}
+.app{display:grid;height:100%;
+  grid-template-columns:52px 1fr 340px;
+  grid-template-rows:44px 38px 1fr 28px;
+  grid-template-areas:"rail top top" "rail sub sub" "rail chart side" "rail foot foot"}
+
+/* ---------- far-left drawing rail (TradingView style) ---------- */
+.rail{grid-area:rail;background:var(--panel);border-right:1px solid var(--line);
+  display:flex;flex-direction:column;align-items:center;padding:8px 0;gap:1px}
+.rail .t{width:38px;height:38px;display:grid;place-items:center;border-radius:4px;
+  color:var(--muted);font-size:15px;cursor:pointer;position:relative}
+.rail .t:hover{background:var(--panel-2);color:var(--text)}
+.rail .t.on{color:var(--accent);background:#2962ff1a}
+.rail .t.on::before{content:"";position:absolute;left:0;top:10px;bottom:10px;width:2px;
+  background:var(--accent)}
+.rail .sep{width:26px;height:1px;background:var(--line);margin:6px 0}
+.rail .grow{flex:1}
+
+/* ---------- top bar ---------- */
+.top{grid-area:top;background:var(--panel);border-bottom:1px solid var(--line);
+  display:flex;align-items:center;gap:6px;padding:0 10px}
+.logo{color:var(--accent);font-weight:700;font-size:13px;letter-spacing:.2px;
+  margin-right:6px;display:flex;align-items:center;gap:6px}
+.logo .m{width:18px;height:18px;border-radius:3px;background:var(--accent);
+  display:grid;place-items:center;color:#fff;font-size:10px;font-weight:800}
+.symbtn{display:flex;align-items:center;gap:7px;height:30px;padding:0 10px;
+  background:var(--panel-2);border:1px solid var(--line);border-radius:4px;cursor:pointer;
+  font-size:13px;font-weight:600}
+.symbtn:hover{border-color:#4a4f5c}
+.symbtn .px{color:var(--up);font-weight:600;font-size:12px;font-variant-numeric:tabular-nums}
+.symbtn .car{color:var(--muted);font-size:9px}
+.tfb{display:flex;gap:1px;background:var(--panel-2);border:1px solid var(--line);
+  border-radius:4px;padding:2px}
+.tfb .b{padding:3px 8px;border-radius:3px;font-size:11px;color:var(--muted);cursor:pointer}
+.tfb .b:hover{color:var(--text)}
+.tfb .b.on{background:var(--accent);color:#fff;font-weight:600}
+.icobtn{width:30px;height:30px;display:grid;place-items:center;border-radius:4px;
+  color:var(--muted);cursor:pointer;font-size:14px}
+.icobtn:hover{background:var(--panel-2);color:var(--text)}
+.grow{flex:1}
+.act{height:30px;padding:0 14px;border-radius:4px;border:none;font:inherit;font-size:12px;
+  font-weight:600;cursor:pointer;color:#fff}
+.act.buy{background:var(--up)}
+.act.sell{background:var(--down)}
+.act.buy:hover{background:#2ebdb0}
+.act.sell:hover{background:#f6685e}
+
+/* ---------- secondary toolbar ---------- */
+.sub{grid-area:sub;background:var(--panel);border-bottom:1px solid var(--line);
+  display:flex;align-items:center;gap:4px;padding:0 10px;font-size:11px;color:var(--muted)}
+.sub .s{display:flex;align-items:center;gap:5px;height:26px;padding:0 8px;border-radius:3px;
+  cursor:pointer}
+.sub .s:hover{background:var(--panel-2);color:var(--text)}
+.sub .s.on{color:var(--accent)}
+.sub .divider{width:1px;height:16px;background:var(--line);margin:0 6px}
+
+/* ---------- chart ---------- */
+.chart{grid-area:chart;position:relative;overflow:hidden;background:var(--bg)}
+.wm{position:absolute;left:14px;top:12px;display:flex;align-items:baseline;gap:10px;z-index:2}
+.wm .n{font-size:16px;font-weight:700;letter-spacing:-.2px;color:#e8eaed}
+.wm .t{font-size:11px;color:var(--muted)}
+.wm .ohlc{font-size:11px;color:var(--muted);font-variant-numeric:tabular-nums;
+  margin-left:4px}
+.wm .ohlc b{font-weight:500}
+.wm .ohlc .u{color:var(--up)}
+.candles{position:absolute;inset:0}
+.px{position:absolute;right:0;top:0;bottom:0;width:66px;border-left:1px solid #232733;
+  display:flex;flex-direction:column;justify-content:space-around;
+  padding:16px 6px 30px;font-size:10.5px;color:var(--muted);
+  font-variant-numeric:tabular-nums;text-align:right}
+.px .now{background:var(--up);color:#fff;border-radius:2px;font-weight:600;
+  padding:1px 4px;margin-right:-2px}
+.taxis{position:absolute;left:0;right:66px;bottom:0;height:26px;
+  border-top:1px solid #232733;display:flex;justify-content:space-between;
+  align-items:center;padding:0 10px;font-size:10px;color:var(--muted)}
+
+/* ---------- right panel ---------- */
+.side{grid-area:side;background:var(--panel);border-left:1px solid var(--line);
+  display:flex;flex-direction:column;min-height:0}
+.stabs{display:flex;border-bottom:1px solid var(--line);background:#1a1e29}
+.stab{flex:1;height:36px;background:none;border:none;border-bottom:2px solid transparent;
+  color:var(--muted);font:inherit;font-size:11px;cursor:pointer}
+.stab:hover{color:var(--text);background:#20242f}
+.stab.on{color:var(--accent);border-bottom-color:var(--accent);background:var(--panel)}
+.sbody{padding:0;overflow-y:auto;display:flex;flex-direction:column}
+.sbody::-webkit-scrollbar{width:6px}
+.sbody::-webkit-scrollbar-thumb{background:#363a45;border-radius:3px}
+
+.sec{border-bottom:1px solid #232733;padding:12px}
+.sec h4{font-size:10px;letter-spacing:.7px;text-transform:uppercase;color:var(--muted);
+  margin-bottom:10px;font-weight:600;display:flex;justify-content:space-between;
+  align-items:center}
+.sec h4 .more{color:var(--muted);font-size:12px;cursor:pointer}
+
+.bignum{font-size:26px;font-weight:700;font-variant-numeric:tabular-nums;
+  letter-spacing:-.5px;line-height:1.1}
+.sub2{font-size:11px;color:var(--muted);margin-top:3px}
+.up{color:var(--up)}.down{color:var(--down)}
+
+.rows{display:flex;flex-direction:column;margin-top:10px}
+.row{display:flex;justify-content:space-between;padding:5px 0;font-size:11.5px;
+  border-bottom:1px solid #1f2330}
+.row:last-child{border-bottom:none}
+.row span{color:var(--muted)}
+.row b{font-variant-numeric:tabular-nums;font-weight:500}
+
+.cal{display:grid;grid-template-columns:repeat(7,1fr);gap:2px}
+.cal .dow{color:var(--muted);text-align:center;font-size:9px;padding-bottom:3px}
+.cal .d{aspect-ratio:1;border-radius:2px;display:grid;place-items:center;
+  background:#1f2330;color:var(--muted);font-size:9.5px}
+.cal .d.w{background:#1c4a3f;color:#7fd9c8}
+.cal .d.l{background:#4a2124;color:#f09a9c}
+.cal .d.big{background:var(--up);color:#06251f;font-weight:700}
+
+.legendbar{display:flex;gap:10px;font-size:9.5px;color:var(--muted);flex-wrap:wrap;
+  margin-top:9px}
+.legendbar i{width:8px;height:8px;border-radius:1px;display:inline-block;margin-right:3px}
+
+/* ---------- footer ---------- */
+.foot{grid-area:foot;background:var(--panel);border-top:1px solid var(--line);
+  display:flex;align-items:center;gap:14px;padding:0 10px;font-size:10.5px;color:var(--muted)}
+.foot b{color:var(--text);font-weight:500}
+</style></head>
+<body><div class="app">
+
+  <nav class="rail">
+    <div class="t on">✛</div>
+    <div class="sep"></div>
+    <div class="t">╱</div>
+    <div class="t">▭</div>
+    <div class="t">F</div>
+    <div class="t">✎</div>
+    <div class="t">T</div>
+    <div class="sep"></div>
+    <div class="t">◎</div>
+    <div class="t">⌖</div>
+    <div class="grow"></div>
+    <div class="t">🔒</div>
+    <div class="t">🗑</div>
+  </nav>
+
+  <header class="top">
+    <div class="logo"><span class="m">FX</span>Replay</div>
+    <div class="symbtn">
+      XAUUSD <span class="px">1991.71</span> <span class="car">▾</span>
+    </div>
+    <div class="tfb">
+      <div class="b">1m</div><div class="b on">5m</div><div class="b">15m</div>
+      <div class="b">1h</div><div class="b">4h</div><div class="b">1D</div>
+    </div>
+    <div class="icobtn">🕯</div>
+    <div class="icobtn">📈</div>
+    <div class="icobtn">ⓘ</div>
+    <div class="grow"></div>
+    <div class="icobtn">⟲</div>
+    <div class="icobtn">▶</div>
+    <button class="act buy">Buy</button>
+    <button class="act sell">Sell</button>
+  </header>
+
+  <div class="sub">
+    <div class="s on">Indicators</div>
+    <div class="s">Templates</div>
+    <div class="divider"></div>
+    <div class="s">SMA 20</div>
+    <div class="s">RSI 14</div>
+    <div class="s">VWAP</div>
+    <div class="divider"></div>
+    <div class="s">log</div>
+    <div class="s">UTC</div>
+    <div class="s">Sessions</div>
+  </div>
+
+  <main class="chart">
+    <div class="wm">
+      <span class="n">XAUUSD</span>
+      <span class="t">5 · OANDA</span>
+      <span class="ohlc">
+        O <b>1990.76</b> H <b>1993.19</b> L <b>1989.63</b> C <b class="u">1991.71</b>
+        <b class="u">+0.95 (+0.05%)</b>
+      </span>
+    </div>
+    <svg class="candles" viewBox="0 0 940 590" preserveAspectRatio="none">
+      <g stroke="#26a69a" fill="#26a69a">
+        <rect x="46" y="444" width="5" height="52"/><rect x="70" y="422" width="5" height="70"/>
+        <rect x="94" y="402" width="5" height="80"/><rect x="142" y="360" width="5" height="62"/>
+        <rect x="166" y="336" width="5" height="74"/><rect x="190" y="306" width="5" height="86"/>
+        <rect x="238" y="272" width="5" height="70"/><rect x="262" y="250" width="5" height="82"/>
+        <rect x="310" y="294" width="5" height="58"/><rect x="358" y="336" width="5" height="66"/>
+        <rect x="430" y="400" width="5" height="72"/><rect x="478" y="372" width="5" height="64"/>
+        <rect x="550" y="336" width="5" height="80"/><rect x="598" y="302" width="5" height="74"/>
+        <rect x="670" y="270" width="5" height="88"/><rect x="718" y="244" width="5" height="70"/>
+        <rect x="790" y="280" width="5" height="64"/><rect x="838" y="306" width="5" height="78"/>
+      </g>
+      <g stroke="#ef5350" fill="#ef5350">
+        <rect x="118" y="380" width="5" height="46"/><rect x="214" y="344" width="5" height="52"/>
+        <rect x="286" y="274" width="5" height="58"/><rect x="334" y="318" width="5" height="62"/>
+        <rect x="382" y="356" width="5" height="54"/><rect x="406" y="376" width="5" height="48"/>
+        <rect x="454" y="390" width="5" height="58"/><rect x="502" y="352" width="5" height="52"/>
+        <rect x="526" y="364" width="5" height="44"/><rect x="574" y="322" width="5" height="56"/>
+        <rect x="622" y="290" width="5" height="50"/><rect x="646" y="306" width="5" height="46"/>
+        <rect x="694" y="256" width="5" height="54"/><rect x="742" y="262" width="5" height="48"/>
+        <rect x="766" y="276" width="5" height="42"/><rect x="814" y="294" width="5" height="50"/>
+        <rect x="862" y="312" width="5" height="46"/>
+      </g>
+      <path d="M46 466 L118 404 L190 324 L262 294 L334 346 L406 418 L478 378 L550 334 L622 284 L694 274 L766 300 L838 336"
+        fill="none" stroke="#2962ff" stroke-width="1.8" opacity=".9"/>
+      <line x1="0" y1="358" x2="940" y2="358" stroke="#26a69a" stroke-dasharray="3 4" opacity=".5"/>
+    </svg>
+    <div class="px">
+      <span>2040.00</span><span>2032.00</span><span>2024.00</span><span>2016.00</span>
+      <span>2008.00</span><span>2000.00</span><span>1992.00</span>
+      <span class="now">1991.71</span>
+      <span>1984.00</span><span>1976.00</span><span>1968.00</span>
+    </div>
+    <div class="taxis">
+      <span>03:00</span><span>06:00</span><span>09:00</span><span>12:00</span>
+      <span>15:00</span><span>18:00</span><span>21:00</span><span>Wed 3</span><span>03:00</span>
+    </div>
+  </main>
+
+  <aside class="side">
+    <div class="stabs">
+      <button class="stab on">Journal</button>
+      <button class="stab">Equity</button>
+      <button class="stab">Trades</button>
+      <button class="stab">Data</button>
+    </div>
+    <div class="sbody">
+      <div class="sec">
+        <h4>Performance <span class="more">⋯</span></h4>
+        <div class="bignum up">+0.64R</div>
+        <div class="sub2">January 2024 · 4 trades</div>
+        <div class="rows">
+          <div class="row"><span>win rate</span><b>75.0%</b></div>
+          <div class="row"><span>avg R</span><b class="up">+0.16</b></div>
+          <div class="row"><span>worst day</span><b class="down">-0.34R</b></div>
+          <div class="row"><span>losing run</span><b>1 day</b></div>
+        </div>
+      </div>
+
+      <div class="sec">
+        <h4>January 2024 <span class="more">‹ ›</span></h4>
+        <div class="cal">
+          <div class="dow">M</div><div class="dow">T</div><div class="dow">W</div>
+          <div class="dow">T</div><div class="dow">F</div><div class="dow">S</div><div class="dow">S</div>
+          <div class="d"></div><div class="d">1</div><div class="d w">2</div><div class="d l">3</div>
+          <div class="d w">4</div><div class="d">5</div><div class="d">6</div>
+          <div class="d">7</div><div class="d">8</div><div class="d big">9</div><div class="d">10</div>
+          <div class="d">11</div><div class="d">12</div><div class="d">13</div>
+          <div class="d">14</div><div class="d">15</div><div class="d">16</div><div class="d">17</div>
+          <div class="d">18</div><div class="d">19</div><div class="d">20</div>
+          <div class="d">21</div><div class="d">22</div><div class="d">23</div><div class="d">24</div>
+          <div class="d">25</div><div class="d">26</div><div class="d">27</div>
+          <div class="d">28</div><div class="d">29</div><div class="d">30</div><div class="d">31</div>
+        </div>
+        <div class="legendbar">
+          <span><i style="background:#26a69a"></i>+2R</span>
+          <span><i style="background:#1c4a3f"></i>win</span>
+          <span><i style="background:#4a2124"></i>loss</span>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <footer class="foot">
+    <span>bars <b>2,000</b></span>
+    <span>revealed <b>2,000</b></span>
+    <span>spread <b>0.20</b></span>
+    <span>commission <b>$3/lot</b></span>
+    <span style="margin-left:auto">offline · no network</span>
+  </footer>
+</div></body></html>

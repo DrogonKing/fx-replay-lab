@@ -53,7 +53,20 @@ export interface PointerContext {
   /** id generator so the reducer stays pure */
   nextId: () => string;
   /** default style for new drawings */
-  style: { color: string; width: number };
+  /**
+   * The style for a NEW drawing.
+   *
+   * Carries the full style, not just colour and width: a tool customised to dashed or 60%
+   * opaque has to be painted that way, and narrowing it here silently dropped those.
+   */
+  style: {
+    color: string;
+    width: number;
+    style?: "solid" | "dashed" | "dotted";
+    opacity?: number;
+    fill?: boolean;
+    fillOpacity?: number;
+  };
   /** current chart right edge in time, for shapes that extend */
   rightEdge: number;
 }
@@ -109,6 +122,7 @@ export function onPointerDown(
       points: [ctx.point],
       color: ctx.style.color,
       width: ctx.style.width,
+      ...styleExtras(ctx.style),
     };
     return {
       state: { ...state, pressed: true, pending: [], preview: ctx.point },
@@ -234,6 +248,7 @@ export function onPointerUp(
       points: [a, b],
       color: ctx.style.color,
       width: ctx.style.width,
+      ...styleExtras(ctx.style),
     };
     return {
       state: { ...state, pressed: false, pending: [], preview: null },
@@ -303,6 +318,12 @@ export interface RenderShape {
   /** filled area between two lines, for channels and position tools */
   fill?: { top: [Point, Point]; bottom: [Point, Point] };
   circle?: { center: Point; radiusPrice: number; radiusTime: number };
+  /** solid / dashed / dotted, from the tool's saved style */
+  lineStyle?: "solid" | "dashed" | "dotted";
+  /** 0..1 line opacity */
+  opacity?: number;
+  /** 0..1 fill opacity, independent of the line */
+  fillOpacity?: number;
 }
 
 /**
@@ -311,9 +332,32 @@ export interface RenderShape {
  * `rightEdge` extends rays and channels to the visible edge so they do not stop
  * mid-screen, which is what makes them read as projections rather than segments.
  */
+/**
+ * The optional style fields, when the tool has them set.
+ *
+ * Spread into a new drawing so a tool customised to dashed or translucent keeps that on every
+ * drawing made with it. Returning an empty object for the defaults keeps a stored drawing
+ * identical to what it was before this existed.
+ */
+function styleExtras(s: {
+  style?: "solid" | "dashed" | "dotted";
+  opacity?: number;
+  fillOpacity?: number;
+}): Pick<Drawing, "style" | "opacity" | "fillOpacity"> {
+  const out: Pick<Drawing, "style" | "opacity" | "fillOpacity"> = {};
+  if (s.style && s.style !== "solid") out.style = s.style;
+  if (s.opacity !== undefined && s.opacity < 1) out.opacity = s.opacity;
+  if (s.fillOpacity !== undefined) out.fillOpacity = s.fillOpacity;
+  return out;
+}
+
 export function renderDrawing(d: Drawing, rightEdge: number): RenderShape {
   const base: RenderShape = {
     kind: d.kind, id: d.id, color: d.color, width: d.width, lines: [], labels: [],
+    // carried through so the canvas honours the tool's saved style instead of guessing
+    ...(d.style ? { lineStyle: d.style } : {}),
+    ...(d.opacity !== undefined ? { opacity: d.opacity } : {}),
+    ...(d.fillOpacity !== undefined ? { fillOpacity: d.fillOpacity } : {}),
   };
   const [a, b, c] = d.points;
 

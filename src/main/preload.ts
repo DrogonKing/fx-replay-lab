@@ -51,6 +51,12 @@ const api = {
   saveJournal: (entries: unknown[]): Promise<{ ok: boolean }> =>
     ipcRenderer.invoke("db:saveJournal", entries),
 
+  /** Per-tool drawing style: raw JSON text, parsed by the renderer once. */
+  loadToolConfigs: (): Promise<{ raw: string | null; updatedAt: number | null }> =>
+    ipcRenderer.invoke("db:loadToolConfigs"),
+  saveToolConfigs: (configs: unknown): Promise<{ ok: boolean }> =>
+    ipcRenderer.invoke("db:saveToolConfigs", configs),
+
   /** User-defined symbols: raw JSON text, parsed by the renderer once. */
   loadSymbols: (): Promise<{ raw: string | null; updatedAt: number | null }> =>
     ipcRenderer.invoke("db:loadSymbols"),

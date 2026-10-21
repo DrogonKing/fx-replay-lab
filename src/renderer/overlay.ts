@@ -348,6 +348,9 @@ export class DrawingOverlay {
     ctx.strokeStyle = colour;
     ctx.lineWidth = selected || hovered ? shape.width + 1 : shape.width;
     ctx.lineCap = "round";
+    // A translucent tool must be drawn translucent, or customising opacity does nothing.
+    // Hover and selection override it so a nearly-invisible drawing can still be found.
+    ctx.globalAlpha = selected || hovered ? 1 : (shape.opacity ?? 1);
 
     // filled areas first so the outline sits on top
     if (shape.fill) {
@@ -355,7 +358,7 @@ export class DrawingOverlay {
       const tb = toPixel(this.chart, this.series, shape.fill.bottom[1]);
       if (t && tb) {
         ctx.save();
-        ctx.globalAlpha = 0.12;
+        ctx.globalAlpha = shape.fillOpacity ?? 0.12;
         ctx.fillStyle = colour;
         const w = Math.abs(tb.x - t.x);
         const h = Math.abs(tb.y - t.y);
@@ -372,7 +375,17 @@ export class DrawingOverlay {
       const a2 = a ?? { x: b!.x, y: 0 };
       const b2 = b ?? { x: a!.x, y: this.canvas.getBoundingClientRect().height };
       ctx.save();
-      ctx.setLineDash(line.dashed ? [4, 4] : []);
+      // A line's own `dashed` flag wins (projection legs are always dashed); otherwise the
+      // tool's saved style decides.
+      if (line.dashed) {
+        ctx.setLineDash([4, 4]);
+      } else if (shape.lineStyle === "dashed") {
+        ctx.setLineDash([shape.width * 5, shape.width * 4]);
+      } else if (shape.lineStyle === "dotted") {
+        ctx.setLineDash([shape.width, shape.width * 3]);
+      } else {
+        ctx.setLineDash([]);
+      }
       ctx.beginPath();
       ctx.moveTo(a2.x, a2.y);
       ctx.lineTo(b2.x, b2.y);

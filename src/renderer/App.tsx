@@ -32,7 +32,12 @@ import {
   type InteractionState, type PointerContext,
 } from "../core/drawing-interaction.js";
 import { nearestDrawing } from "../core/drawing-interaction.js";
-import { DrawingToolbar, TOOL_LABELS } from "./DrawingToolbar.js";
+import { DrawingToolbar, TOOL_LABELS, ALL_KINDS } from "./DrawingToolbar.js";
+import { ToolSettings } from "./panels/ToolSettings.js";
+import {
+  defaultConfigs, mergeConfigs, serialiseConfigs, styleFor,
+  type ToolConfig,
+} from "../core/tool-config.js";
 import { DrawingOverlay, toData } from "./overlay.js";
 import {
   parseDrawings, serialiseDrawings, workspaceKey,
@@ -215,6 +220,44 @@ function makePriceSeries(
 
   const feedRef = useRef<Feed | null>(null);
   const drawingsRef = useRef(new DrawingHistory());
+
+  /** per-tool style and visibility; persisted, so a chosen colour survives a restart */
+  const [toolConfigs, setToolConfigs] = useState<Record<string, ToolConfig>>(
+    () => defaultConfigs(ALL_KINDS),
+  );
+  const [settingsFor, setSettingsFor] = useState<DrawingKind | null>(null);
+  const [magnet, setMagnet] = useState(false);
+  const [locked, setLocked] = useState(false);
+  const [hiddenDrawings, setHiddenDrawings] = useState(false);
+  const [favourites, setFavourites] = useState<DrawingKind[]>([]);
+
+  // Load the saved per-tool styles once. A failure here must not stop the app: the defaults
+  // are perfectly usable, so it reports and carries on.
+  useEffect(() => {
+    const api = (globalThis as unknown as {
+      fxlab?: { loadToolConfigs?: () => Promise<{ raw: string | null }> };
+    }).fxlab;
+    if (!api?.loadToolConfigs) return;
+    let cancelled = false;
+    void api.loadToolConfigs().then((res) => {
+      if (cancelled || res.raw === null) return;
+      try {
+        setToolConfigs(mergeConfigs(JSON.parse(res.raw), ALL_KINDS));
+      } catch (e) {
+        setStatus(`tool settings unreadable, using defaults: ${(e as Error).message}`);
+      }
+    }).catch(() => { /* defaults are fine */ });
+    return () => { cancelled = true; };
+  }, []);
+
+  /** Persist on every change. Only modified tools are written, so defaults stay live. */
+  const applyToolConfigs = (next: Record<string, ToolConfig>): void => {
+    setToolConfigs(next);
+    const api = (globalThis as unknown as {
+      fxlab?: { saveToolConfigs?: (c: unknown) => Promise<{ ok: boolean }> };
+    }).fxlab;
+    void api?.saveToolConfigs?.(serialiseConfigs(next));
+  };
   const overlayRef = useRef<DrawingOverlay | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
@@ -484,10 +527,14 @@ function makePriceSeries(
       // price units per second, so a pixel tolerance is isotropic
       timeWeight: pricePerPx / Math.max(1e-9, secPerPx),
       nextId: () => `dr_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
-      style: { color: "#f0b90b", width: 2 },
+      // the active tool's saved style: a user who set trend lines to teal gets teal,
+      // and the fallback is the amber this used before
+      style: tool
+        ? styleFor(toolConfigs, tool)
+        : { color: "#f0b90b", width: 2, style: "solid", opacity: 1, fill: false, fillOpacity: 0.12 },
       rightEdge: view.length > 0 ? view.time[view.length - 1]! + 3600 : p.time,
     };
-  }, [view]);
+  }, [view, tool, toolConfigs]);
 
   /**
    * Apply a mutation to the drawing collection.
@@ -1122,8 +1169,22 @@ function makePriceSeries(
 
       <DrawingToolbar
         active={tool}
+        configs={toolConfigs}
+        timeframe={tf.label}
+        magnet={magnet}
+        onMagnet={setMagnet}
+        locked={locked}
+        onLocked={setLocked}
+        hidden={hiddenDrawings}
+        onHidden={setHiddenDrawings}
+        onSettings={(k) => setSettingsFor(k)}
+        favourites={favourites}
+        onToggleFavourite={(k) => setFavourites((f) =>
+          f.includes(k) ? f.filter((x) => x !== k) : [...f, k])}
         onSelect={(k) => {
           setTool(k);
+          // a new drawing starts from the tool's saved style, which is the whole point of
+          // customising it once
           interRef.current = { ...initialState(), tool: k };
         }}
         onDelete={() => {
@@ -1315,6 +1376,16 @@ function makePriceSeries(
           <JournalPanel
             session={session}
             onEntries={(list) => setJournalEntries([...list])}
+          />
+        )}
+
+        {settingsFor && (
+          <ToolSettings
+            kind={settingsFor}
+            configs={toolConfigs}
+            onChange={applyToolConfigs}
+            onClose={() => setSettingsFor(null)}
+            allKinds={ALL_KINDS}
           />
         )}
 
