@@ -10,12 +10,14 @@
  *   - the renderer talks only through the preload bridge;
  *   - navigation and new windows are blocked, since the app is offline by design.
  */
-import { app, BrowserWindow, ipcMain, shell } from "electron";
-import path from "node:path";
-import fs from "node:fs";
+import { app, BrowserWindow, dialog, ipcMain, shell } from "electron";
+import * as path from "node:path";
+import { promises as fsp, mkdirSync } from "node:fs";
 import { openDatabase, type Db, type NewsRow } from "./db.js";
 import { parseDrawings, parseJournal } from "../core/persist.js";
 import { fetchJson } from "./net.js";
+import { decompressBi5, downloadRange, unzipCsv } from "./dukascopy-download.js";
+import { parseDukascopyDay } from "../core/importer.js";
 import {
   handleBacktest, handleOptimize, handleWalkForward, handleMonteCarlo,
   handlePine, handlePineParse, type RunRequest,
@@ -27,7 +29,7 @@ let db: Db | null = null;
 
 function dataDir(): string {
   const dir = path.join(app.getPath("userData"), "fx-replay-lab");
-  fs.mkdirSync(dir, { recursive: true });
+  mkdirSync(dir, { recursive: true });
   return dir;
 }
 
@@ -90,6 +92,102 @@ app.whenReady().then(() => {
   ipcMain.handle("db:saveSymbols", (_e, symbols: unknown) => {
     db?.saveSymbols(symbols);
     return { ok: true };
+  });
+
+  /**
+   * Download history. Long-running by design (a 7-year pull is hours), so progress is pushed
+   * to the renderer rather than polled, and the download is resumable from its own cache.
+   */
+  ipcMain.handle("data:downloadHistory", async (e, req: {
+    symbol: string; from: number; to: number; workers: number;
+  }) => {
+    try {
+      const dir = path.join(dataDir(), "history");
+      const result = await downloadRange({
+        symbol: req.symbol,
+        from: req.from,
+        to: req.to,
+        dir,
+        workers: Math.max(1, Math.min(4, req.workers)),
+        onProgress: (p) => {
+          if (!e.sender.isDestroyed()) e.sender.send("data:downloadProgress", p);
+        },
+      });
+      return {
+        ok: result.candles.length > 0,
+        candles: result.candles,
+        progress: result.progress,
+        ...(result.candles.length === 0
+          ? { message: "no bars returned for that range" }
+          : {}),
+      };
+    } catch (err) {
+      return { ok: false, message: (err as Error).message };
+    }
+  });
+
+  /**
+   * Pick and read a data file.
+   *
+   * Text for CSV, base64 for binary. The renderer decides what the bytes MEAN, because that
+   * logic is pure and unit-tested; main only moves them.
+   */
+  ipcMain.handle("data:pickFile", async () => {
+    const res = await dialog.showOpenDialog({
+      title: "Import candles",
+      properties: ["openFile"],
+      filters: [
+        { name: "All supported", extensions: ["csv", "txt", "bi5", "zip"] },
+        { name: "CSV", extensions: ["csv", "txt"] },
+        { name: "Dukascopy", extensions: ["bi5"] },
+        { name: "Archive", extensions: ["zip"] },
+      ],
+    });
+    if (res.canceled || res.filePaths.length === 0) return { ok: false };
+    const file = res.filePaths[0]!;
+    const name = path.basename(file);
+    const buf = await fsp.readFile(file);
+    // 60 MB is already several years of 1-minute CSV; refuse larger rather than hang
+    if (buf.byteLength > 60 * 1024 * 1024) {
+      return { ok: false, message: "file is larger than 60 MB" };
+    }
+    const lower = name.toLowerCase();
+
+    // A Dukascopy .bi5 file stores offsets from midnight, so it needs its day. The download keeps
+    // the server's folder layout (SYMBOL/YYYY/MM0/DD/BID_candles_min_1.bi5), so the date is in
+    // the path — which is why this reads the path rather than asking the user.
+    if (lower.endsWith(".bi5")) {
+      const m = /([A-Za-z]{6})\/(\d{4})\/(\d{2})\/(\d{2})\//.exec(file.replace(/\\/g, "/"));
+      if (!m) {
+        return {
+          ok: false,
+          message:
+            "This .bi5 has no date in its path. Dukascopy keeps " +
+            "SYMBOL/YYYY/MM/DD/ in the folder — import the folder instead, or the day " +
+            "cannot be reconstructed because the file stores only offsets from midnight.",
+        };
+      }
+      const [, sym, ys, ms, ds] = m;
+      try {
+        const raw = decompressBi5(buf);
+        // month in the path is ZERO-indexed; parseDukascopyDay takes 1-indexed
+        const res = parseDukascopyDay(raw, sym!.toUpperCase(), Number(ys), Number(ms) + 1, Number(ds));
+        return { ok: true, name, kind: "candles", candles: res.candles };
+      } catch (err) {
+        return { ok: false, message: `could not decode ${name}: ${(err as Error).message}` };
+      }
+    }
+
+    if (lower.endsWith(".zip")) {
+      const entries = unzipCsv(buf);
+      if (entries.length === 0) {
+        return { ok: false, message: "no CSV inside that archive" };
+      }
+      // concatenate: a HistData monthly ZIP holds one file
+      return { ok: true, name, text: entries.join("\n") };
+    }
+
+    return { ok: true, name, text: buf.toString("utf8") };
   });
 
   ipcMain.handle("db:loadToolConfigs", () =>

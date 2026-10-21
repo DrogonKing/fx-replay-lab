@@ -51,6 +51,30 @@ const api = {
   saveJournal: (entries: unknown[]): Promise<{ ok: boolean }> =>
     ipcRenderer.invoke("db:saveJournal", entries),
 
+  /** Download history from Dukascopy. Long-running; progress arrives via onDownloadProgress. */
+  downloadHistory: (req: {
+    symbol: string; from: number; to: number; workers: number;
+  }): Promise<{
+    ok: boolean;
+    candles?: Array<{ time: number; open: number; high: number; low: number; close: number; volume: number }>;
+    progress?: unknown;
+    message?: string;
+  }> => ipcRenderer.invoke("data:downloadHistory", req),
+
+  onDownloadProgress: (cb: (p: unknown) => void): void => {
+    ipcRenderer.removeAllListeners("data:downloadProgress");
+    ipcRenderer.on("data:downloadProgress", (_e, p) => cb(p));
+  },
+
+  /** Pick a data file; text for CSV, base64 for .bi5/.zip. */
+  pickDataFile: (): Promise<{
+    ok: boolean;
+    name?: string;
+    text?: string;
+    candles?: Array<{ time: number; open: number; high: number; low: number; close: number; volume: number }>;
+    message?: string;
+  }> => ipcRenderer.invoke("data:pickFile"),
+
   /** Per-tool drawing style: raw JSON text, parsed by the renderer once. */
   loadToolConfigs: (): Promise<{ raw: string | null; updatedAt: number | null }> =>
     ipcRenderer.invoke("db:loadToolConfigs"),

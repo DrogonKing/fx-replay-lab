@@ -68,13 +68,15 @@ import {
 import { DataPanel } from "./panels/DataPanel.js";
 import { StrategyPanel } from "./panels/StrategyPanel.js";
 import { JournalPanel } from "./panels/JournalPanel.js";
+import { DownloaderPanel } from "./panels/DownloaderPanel.js";
 import { createFeed, symbols as LIVE_SYMBOLS } from "./livefeed.js";
 import type { Feed, FeedStatus } from "../core/feed.js";
-import type { CandleSeries, Timeframe } from "../core/types.js";
+import type { Candle, CandleSeries, Timeframe } from "../core/types.js";
+import { auditCandles, describeSpacing, parseText } from "../core/importer.js";
 
 type IndicatorKind = "SMA" | "EMA" | "BB" | "RSI" | "ADX" | "CCI" | "VWAP" | "SUPERTREND";
 type RailTab =
-  | "data" | "trade" | "news" | "sessions" | "equity"
+  | "data" | "download" | "trade" | "news" | "sessions" | "equity"
   | "indicators" | "strategy" | "journal" | "symbols";
 
 const SESSION_LABELS: Record<SessionName, string> = {
@@ -551,6 +553,33 @@ function makePriceSeries(
     } catch (e) {
       setStatus(`Import failed: ${(e as Error).message}`);
     }
+  }, []);
+
+  /**
+   * Load candles that came from either route — a download or an imported file.
+   *
+   * Both go through here on purpose: the chart, the account and the replay should not care
+   * where the bars came from, and two code paths would eventually disagree.
+   */
+  const loadCandles = useCallback((label: string, candles: Candle[]): void => {
+    if (candles.length === 0) {
+      setStatus(`No usable bars from ${label}`);
+      return;
+    }
+    const s = seriesFromCandles(candles);
+    setBase(s);
+    setRevealed(Math.min(2_000, s.length));
+    setFeedStatus({
+      state: "offline", mode: "offline", servedBy: "file", fromCache: true,
+      barCount: s.length,
+      message: `Loaded ${label}`,
+      usable: true,
+    });
+    const audit = auditCandles(candles);
+    setStatus(
+      `${candles.length.toLocaleString()} bars from ${label} · ` +
+      `${describeSpacing(audit.spacingSeconds)} · ${audit.verdict}`,
+    );
   }, []);
 
   const applyCustom = useCallback(() => {
@@ -1403,7 +1432,7 @@ function makePriceSeries(
 
       <aside className="panel">
         <nav className="rail-tabs">
-          {(["data", "trade", "news", "sessions", "equity", "indicators", "strategy", "journal", "symbols"] as RailTab[]).map((tabId) => (
+          {(["data", "download", "trade", "news", "sessions", "equity", "indicators", "strategy", "journal", "symbols"] as RailTab[]).map((tabId) => (
             <button
               key={tabId}
               data-tab={tabId}
@@ -1414,6 +1443,31 @@ function makePriceSeries(
             </button>
           ))}
         </nav>
+
+        {rail === "download" && (
+          <DownloaderPanel
+            symbols={LIVE_SYMBOLS.map((s) => ({ id: s.id, label: s.label }))}
+            onStatus={setStatus}
+            onLoad={(sym, candles) => loadCandles(`${sym} (downloaded)`, candles)}
+            onImportFile={(name, text) => {
+              const r = parseText(name, text);
+              if (r.candles.length === 0) {
+                setStatus(
+                  `No usable bars in ${name}` +
+                  (r.skipped > 0 ? ` — ${r.skipped} rows rejected` : ""),
+                );
+                return;
+              }
+              loadCandles(name, r.candles);
+              if (r.skipped > 0) {
+                setStatus(
+                  `${r.candles.length.toLocaleString()} bars from ${name} · ` +
+                  `${r.skipped} rows skipped`,
+                );
+              }
+            }}
+          />
+        )}
 
         {rail === "data" && (
           <>
