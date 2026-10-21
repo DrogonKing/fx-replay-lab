@@ -18,7 +18,7 @@ import { parseDrawings, parseJournal } from "../core/persist.js";
 import { fetchJson } from "./net.js";
 import { decompressBi5, downloadRange, unzipCsv } from "./dukascopy-download.js";
 import { parseDukascopyDay } from "../core/importer.js";
-import { fetchBridgeCandles, fetchOandaCandles, testBridge } from "./broker-fetch.js";
+import { bridgeLogin, fetchBridgeCandles, fetchOandaCandles, testBridge } from "./broker-fetch.js";
 import {
   handleBacktest, handleOptimize, handleWalkForward, handleMonteCarlo,
   handlePine, handlePineParse, type RunRequest,
@@ -195,6 +195,22 @@ app.whenReady().then(() => {
   ipcMain.handle("broker:testBridge", async (_e, url: string) => {
     try {
       return await testBridge(String(url));
+    } catch (err) {
+      return { ok: false, error: (err as Error).message };
+    }
+  });
+
+  /**
+   * Log the MT5 terminal in through the bridge.
+   *
+   * The password crosses this IPC boundary and is used once, in memory. It is never written to
+   * the database and never logged.
+   */
+  ipcMain.handle("broker:login", async (_e, req: {
+    url: string; login: string; password: string; server: string;
+  }) => {
+    try {
+      return await bridgeLogin(req);
     } catch (err) {
       return { ok: false, error: (err as Error).message };
     }

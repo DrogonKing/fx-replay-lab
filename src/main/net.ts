@@ -38,7 +38,7 @@ export function bridgeUrlAllowed(url: string): boolean {
     const u = new URL(url);
     if (u.protocol !== "http:") return false;
     if (u.hostname !== "127.0.0.1" && u.hostname !== "localhost") return false;
-    return ["/health", "/symbols", "/timeframes", "/candles"].includes(u.pathname);
+    return ["/health", "/symbols", "/timeframes", "/candles", "/login"].includes(u.pathname);
   } catch {
     return false;
   }

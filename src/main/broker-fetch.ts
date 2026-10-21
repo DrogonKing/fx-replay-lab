@@ -156,6 +156,47 @@ export async function testBridge(url: string): Promise<{
   }
 }
 
+/**
+ * Log the MT5 terminal in through the bridge.
+ *
+ * This is the only POST the bridge accepts, and the only place a password moves. It is sent to
+ * loopback over plain HTTP — which is why the bridge binds to 127.0.0.1 and nothing else — and it
+ * is NOT echoed into any error string, because an error message is the most common way a secret
+ * ends up in a log.
+ */
+export async function bridgeLogin(req: {
+  url: string; login: string; password: string; server: string;
+}): Promise<{ ok: boolean; account?: string; symbols?: number; error?: string }> {
+  const scrub = (s: string): string =>
+    req.password.length > 0 ? s.split(req.password).join("[REDACTED]") : s;
+
+  const url = `${bridgeOrigin(req.url)}/login`;
+  if (!bridgeUrlAllowed(url)) {
+    return {
+      ok: false,
+      error:
+        "that URL is not a local bridge address — the bridge must be " +
+        "http://127.0.0.1:<port> or http://localhost:<port>",
+    };
+  }
+
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ login: req.login, password: req.password, server: req.server }),
+      signal: AbortSignal.timeout(CANDLE_TIMEOUT_MS),
+    });
+    const body = (await res.json()) as { ok?: boolean; account?: string; symbols?: number; error?: string };
+    if (body.ok === true) {
+      return { ok: true, account: body.account, symbols: body.symbols };
+    }
+    return { ok: false, error: scrub(body.error ?? `login refused with HTTP ${res.status}`) };
+  } catch (e) {
+    return { ok: false, error: scrub(`could not reach the bridge: ${(e as Error).message}`) };
+  }
+}
+
 /** Bars from a bridge. The bridge's own error text is passed through unchanged. */
 export async function fetchBridgeCandles(req: {
   url: string; symbol: string; timeframe: string; from: number; to: number;

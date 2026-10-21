@@ -108,7 +108,31 @@ class Handler(BaseHTTPRequestHandler):
         self._send(404, {"error": "unknown endpoint"})
 
     def do_POST(self) -> None:  # noqa: N802
-        self._send(405, {"error": "the bridge is read-only; log in with the terminal or --login"})
+        u = urlparse(self.path)
+        if u.path == "/login":
+            try:
+                length = int(self.headers.get("Content-Length", "0"))
+                body = json.loads(self.rfile.read(length).decode()) if length else {}
+            except (ValueError, UnicodeDecodeError):
+                self._send(400, {"error": "body must be JSON"})
+                return
+            login = str(body.get("login", ""))
+            password = str(body.get("password", ""))
+            server = str(body.get("server", ""))
+            if not login or not password or not server:
+                self._send(400, {"error": "login, password and server are all required"})
+                return
+            # a deliberately picky rule, so the panel's error path is exercised too
+            if password == "wrong":
+                self._send(200, {"ok": False, "error": "initialize failed: (-6, 'Authorization failed')"})
+                return
+            self._send(200, {
+                "ok": True,
+                "account": f"{server} #{login} (demo)",
+                "symbols": len(SYMBOLS),
+            })
+            return
+        self._send(405, {"error": "the bridge exposes candles, symbols and login; nothing else"})
 
 
 def main() -> int:

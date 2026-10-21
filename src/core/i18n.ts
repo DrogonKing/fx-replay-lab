@@ -230,6 +230,16 @@ export const MESSAGES: Record<Lang, Record<string, string>> = {
     "br.needCreds": "a token and an account ID are required",
     "br.notImplemented": "cTrader is not implemented yet — OANDA and MetaTrader are",
     "br.windowsOnly": "Needs Windows: the MetaTrader5 package ships win_amd64 wheels only.",
+    "br.loginHint": "If MetaTrader is already logged in, you do not need these — just probe the bridge. Fill them only to log the terminal in from here.",
+    "br.loginSwitch": "Connected. To use a different MT5 account, log in below — it replaces the terminal's session.",
+    "br.login": "MT5 login (account number)",
+    "br.password": "Password",
+    "br.server": "Server",
+    "br.loginGo": "Log in",
+    "br.loggingIn": "logging in…",
+    "br.loggedIn": "logged in",
+    "br.needCredsAll": "account number, password and server are all required",
+    "br.loginSecurity": "The password goes to your local bridge only, is used once, and is cleared from this form on success. Nothing is saved.",
     "br.security": "Credentials are held in memory for one request. Nothing is written to disk.",
 
     // downloader + import
@@ -462,6 +472,16 @@ export const MESSAGES: Record<Lang, Record<string, string>> = {
     "br.needCreds": "توکن و شناسهٔ حساب لازم است",
     "br.notImplemented": "cTrader هنوز پیاده نشده — OANDA و MetaTrader کار می‌کنند",
     "br.windowsOnly": "ویندوز لازم دارد: پکیج MetaTrader5 فقط win_amd64 است.",
+    "br.loginHint": "اگر متاتریدر از قبل لاگین است، اینها لازم نیست — فقط پل را تست کن. اینها را پر کن فقط اگر بخواهی از همین‌جا ترمینال را لاگین کنی.",
+    "br.loginSwitch": "متصل است. برای حساب MT5 دیگر، پایین لاگین کن — سشن ترمینال را عوض می‌کند.",
+    "br.login": "شمارهٔ حساب MT5",
+    "br.password": "رمز عبور",
+    "br.server": "سرور",
+    "br.loginGo": "ورود",
+    "br.loggingIn": "در حال ورود…",
+    "br.loggedIn": "وارد شد",
+    "br.needCredsAll": "شمارهٔ حساب، رمز و سرور هر سه لازم است",
+    "br.loginSecurity": "رمز فقط به پل محلی خودت می‌رود، یک‌بار استفاده می‌شود، و پس از موفقیت از فرم پاک می‌شود. چیزی ذخیره نمی‌شود.",
     "br.security": "اطلاعات فقط در حافظه و برای یک درخواست نگه داشته می‌شود. چیزی روی دیسک نوشته نمی‌شود.",
 
     // دانلودر و ایمپورت

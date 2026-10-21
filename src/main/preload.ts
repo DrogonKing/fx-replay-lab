@@ -87,6 +87,12 @@ const api = {
     error?: string;
   }> => ipcRenderer.invoke("broker:testBridge", url),
 
+  /** Log the MT5 terminal in through the bridge. The password is used once, never stored. */
+  bridgeLogin: (req: {
+    url: string; login: string; password: string; server: string;
+  }): Promise<{ ok: boolean; account?: string; symbols?: number; error?: string }> =>
+    ipcRenderer.invoke("broker:login", req),
+
   /** Bars from a local MT5 bridge (any MT4/MT5 broker, via its own terminal). */
   fetchBridgeCandles: (req: {
     url: string; symbol: string; timeframe: string; from: number; to: number;

@@ -1309,11 +1309,45 @@ function makePriceSeries(
         symbols={LIVE_SYMBOLS.map((s) => ({ id: s.id, label: s.label }))}
         onStart={(c) => void startSession(c)}
         onImport={() => {
-          // the start screen has no file input of its own; enter replay and let the Data
-          // panel's importer take the file, which is the one place CSV is parsed
-          setSessionMode("replay");
-          setRail("data");
-          setStatus("Import a CSV from the Data panel.");
+          // Open the picker directly. The previous version only switched to the Data tab and
+          // printed "Import a CSV from the Data panel", which is the app asking the user to do
+          // what the button they just pressed was supposed to do.
+          //
+          // This goes through main's own picker rather than a browser <input type="file">, because
+          // a .bi5 file stores only offsets from midnight and its date comes from the PATH — which
+          // a browser file input cannot give. ZIPs and the 60 MB cap are handled there too.
+          void (async () => {
+            const api = (globalThis as unknown as {
+              fxlab?: { pickDataFile?: () => Promise<{
+                ok: boolean; name?: string; text?: string; message?: string;
+                candles?: Array<{ time: number; open: number; high: number; low: number; close: number; volume: number }>;
+              }> };
+            }).fxlab;
+            if (!api?.pickDataFile) {
+              setStatus("file picking is not available in this build");
+              return;
+            }
+            const res = await api.pickDataFile();
+            if (!res.ok) {
+              // main's message explains WHY (bad path, oversized file, no CSV in the archive),
+              // so it is shown rather than replaced with a generic failure
+              if (res.message) setStatus(res.message);
+              return;
+            }
+            setSessionMode("replay");
+            setRail("data");
+            // main decodes a .bi5 itself (its date lives in the path), so candles may arrive
+            // ready to use; anything else arrives as text for the renderer's own parser
+            if (res.candles && res.candles.length > 0 && res.name) {
+              loadCandles(res.name, res.candles);
+              return;
+            }
+            if (res.text && res.name) {
+              importCsv(res.text, res.name);
+              return;
+            }
+            setStatus(`nothing usable in ${res.name ?? "that file"}`);
+          })();
         }}
       />
     );

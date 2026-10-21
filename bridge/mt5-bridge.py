@@ -126,7 +126,20 @@ def candles(symbol: str, timeframe: str, start: int, end: int) -> dict[str, Any]
 
 
 class Handler(BaseHTTPRequestHandler):
-    def log_message(self, format: str, *args: Any) -> None:  # noqa: A002
+    def _read_json(self) -> dict[str, Any] | None:
+        """Read and parse the request body, or None if it is not JSON."""
+        try:
+            length = int(self.headers.get("Content-Length", "0"))
+        except ValueError:
+            return None
+        if length <= 0 or length > 64 * 1024:
+            return None
+        try:
+            return json.loads(self.rfile.read(length).decode("utf-8"))
+        except (ValueError, UnicodeDecodeError):
+            return None
+
+    def log_message(self, format: str, *args: object) -> None:  # noqa: A002
         # one line per request, so a slow symbol is visible
         sys.stderr.write("%s %s\n" % (self.command, self.path))
 
@@ -180,9 +193,40 @@ class Handler(BaseHTTPRequestHandler):
         self._send(404, {"error": "unknown endpoint"})
 
     def do_POST(self) -> None:  # noqa: N802
-        # The app never posts credentials over this bridge on purpose: the terminal is logged in
-        # before the bridge starts, so there is nothing to post.
-        self._send(405, {"error": "the bridge is read-only; log in with the terminal or --login"})
+        u = urlparse(self.path)
+
+        # Login is the one write-shaped action this bridge accepts, because a user who wants to
+        # type their demo credentials in the app otherwise cannot: the terminal may be logged out,
+        # and telling them to open MetaTrader first is not always possible (headless VM, kiosk).
+        #
+        # Credentials are used once and never stored. The terminal owns the session afterwards.
+        if u.path == "/login":
+            body = self._read_json()
+            if body is None:
+                self._send(400, {"error": "body must be JSON: {login, password, server}"})
+                return
+            login = body.get("login")
+            password = body.get("password")
+            server = body.get("server")
+            if not login or not password or not server:
+                self._send(400, {"error": "login, password and server are all required"})
+                return
+            try:
+                login_int = int(login)
+            except (TypeError, ValueError):
+                self._send(400, {"error": f"login must be a number, got {login!r}"})
+                return
+            # initialize() with credentials logs the terminal in; without it, it attaches to
+            # whatever the running terminal is doing. Both are supported.
+            ok, msg = connect(login_int, str(password), str(server))
+            if not ok:
+                self._send(200, {"ok": False, "error": msg})
+                return
+            self._send(200, {"ok": True, "account": msg, "symbols": len(mt5.symbols_get() or [])})
+            return
+
+        # Everything else stays refused: no orders, no balance, no positions.
+        self._send(405, {"error": "the bridge exposes candles, symbols and login; nothing else"})
 
 
 def selftest() -> int:

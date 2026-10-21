@@ -44,6 +44,10 @@ interface BrokerApi {
   fetchBridgeCandles?: (req: {
     url: string; symbol: string; timeframe: string; from: number; to: number;
   }) => Promise<{ ok: boolean; candles?: Candle[]; error?: string }>;
+  /** log the MT5 terminal in through the bridge; the only write-shaped call */
+  bridgeLogin?: (req: {
+    url: string; login: string; password: string; server: string;
+  }) => Promise<{ ok: boolean; account?: string; symbols?: number; error?: string }>;
   fetchOandaCandles?: (req: {
     token: string; accountId: string; symbol: string; intervalMinutes: number;
     from: number; to: number; price: "bid" | "ask" | "mid"; practice: boolean;
@@ -78,6 +82,19 @@ export function BrokerPanel({ onLoad, onStatus }: BrokerPanelProps): JSX.Element
 
   // MT5 bridge fields
   const [bridgeUrl, setBridgeUrl] = useState("http://127.0.0.1:8765");
+
+  /**
+   * MT5 login credentials, used only if the terminal is not already logged in.
+   *
+   * Held in component state: never written to the database, never logged, and cleared from the
+   * inputs once the login succeeds. The preferred path is still to log in to MetaTrader by hand,
+   * because then the app never sees a password at all — which the panel says, next to the fields.
+   */
+  const [mtLogin, setMtLogin] = useState("");
+  const [mtPassword, setMtPassword] = useState("");
+  const [mtServer, setMtServer] = useState("");
+  const [loginState, setLoginState] = useState<"idle" | "busy" | "ok" | "fail">("idle");
+  const [loginDetail, setLoginDetail] = useState("");
   const [bridgeState, setBridgeState] = useState<"idle" | "testing" | "ok" | "fail">("idle");
   const [bridgeDetail, setBridgeDetail] = useState("");
   const [symbols, setSymbols] = useState<string[]>([]);
@@ -132,6 +149,48 @@ export function BrokerPanel({ onLoad, onStatus }: BrokerPanelProps): JSX.Element
       setBridgeDetail((e as Error).message);
     }
   }, [bridgeUrl, onStatus, t]);
+
+  /**
+   * Log the terminal in through the bridge.
+   *
+   * The bridge is the only thing that can do this: it holds the MetaTrader terminal, and there is
+   * no public API to authenticate one from outside. On success the password fields are cleared
+   * immediately — a credential left in a form field is a credential left on screen.
+   */
+  const doLogin = useCallback(async (): Promise<void> => {
+    const a = api();
+    if (!a.bridgeLogin) {
+      onStatus(t("br.noBridge"));
+      return;
+    }
+    if (mtLogin.trim() === "" || mtPassword === "" || mtServer.trim() === "") {
+      setLoginState("fail");
+      setLoginDetail(t("br.needCredsAll"));
+      return;
+    }
+    setLoginState("busy");
+    setLoginDetail("");
+    try {
+      const res = await a.bridgeLogin({
+        url: bridgeUrl, login: mtLogin.trim(), password: mtPassword, server: mtServer.trim(),
+      });
+      if (!res.ok) {
+        setLoginState("fail");
+        // the bridge's own error is passed through: "initialize failed: (-6, '...')" names the
+        // actual problem, and a generic message would hide it
+        setLoginDetail(res.error ?? "login failed");
+        return;
+      }
+      setLoginState("ok");
+      setLoginDetail(res.account ?? "");
+      setMtPassword("");
+      // a login means the bridge is usable, so re-probe rather than making the user press again
+      await testBridge();
+    } catch (e) {
+      setLoginState("fail");
+      setLoginDetail((e as Error).message);
+    }
+  }, [bridgeUrl, mtLogin, mtPassword, mtServer, onStatus, t, testBridge]);
 
   // Auto-probe once on mount: a user who already started the bridge should not have to press a
   // button to find out it is there.
@@ -260,6 +319,85 @@ export function BrokerPanel({ onLoad, onStatus }: BrokerPanelProps): JSX.Element
               {bridgeState === "ok" ? `${t("br.connected")} — ${bridgeDetail}` : bridgeDetail}
             </p>
           )}
+
+          {/*
+            Credentials. Shown always, not only when the probe failed, because a user who has not
+            started their terminal yet reads the panel top to bottom and needs to know this exists.
+            The note above says the better path first, so nobody types a password who does not
+            need to.
+          */}
+          {/*
+            Kept visible after a successful probe. Hiding it on success meant a successful login
+            made the form disappear along with the only confirmation, and left a user who needs to
+            switch accounts with no form to do it in.
+          */}
+          {bridgeState === "ok" && loginState === "ok" && (
+            // the confirmation, kept on screen: a form that vanishes on success leaves the user
+            // unsure whether it worked
+            <p className="msg up" data-note="br-login-verdict" data-verdict="ok">
+              {`${t("br.loggedIn")} — ${loginDetail}`}
+            </p>
+          )}
+          {/*
+            Credentials, always available.
+
+            The block is NOT removed once connected: a user who logs in and then needs a different
+            account would otherwise have no form to do it with, and the confirmation they just
+            earned would vanish with it. Instead it collapses to a summary so it stops dominating
+            the panel, and the account line stays on screen.
+          */}
+          {bridgeState === "ok" && loginState === "ok" && (
+            <p className="msg up" data-note="br-login-verdict" data-verdict="ok">
+              {`${t("br.loggedIn")} — ${loginDetail}`}
+            </p>
+          )}
+          <div className="br-login" data-note="br-login-block" data-collapsed={bridgeState === "ok" ? "yes" : "no"}>
+            {bridgeState === "ok" && <p className="msg">{t("br.loginSwitch")}</p>}
+            {bridgeState !== "ok" && <p className="msg">{t("br.loginHint")}</p>}
+            <label className="field">
+              {t("br.login")}
+              <input
+                data-field="br-login"
+                value={mtLogin}
+                onChange={(e) => setMtLogin(e.target.value)}
+                placeholder="12345678"
+                inputMode="numeric"
+              />
+            </label>
+            <label className="field">
+              {t("br.password")}
+              <input
+                data-field="br-password"
+                type="password"
+                value={mtPassword}
+                onChange={(e) => setMtPassword(e.target.value)}
+                placeholder="••••••••"
+                autoComplete="off"
+              />
+            </label>
+            <label className="field">
+              {t("br.server")}
+              <input
+                data-field="br-server"
+                value={mtServer}
+                onChange={(e) => setMtServer(e.target.value)}
+                placeholder="ICMarkets-Demo"
+              />
+            </label>
+            <button
+              data-action="br-login"
+              disabled={loginState === "busy"}
+              onClick={() => void doLogin()}
+            >
+              {loginState === "busy" ? t("br.loggingIn") : t("br.loginGo")}
+            </button>
+            {loginState === "fail" && (
+              <p className="msg down" data-note="br-login-verdict" data-verdict="fail">
+                {loginDetail}
+              </p>
+            )}
+            <p className="msg" data-note="br-login-security">{t("br.loginSecurity")}</p>
+          </div>
 
           {bridgeState === "ok" && symbols.length > 0 && (
             <>
