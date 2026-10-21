@@ -170,7 +170,20 @@ export function optimize(
     }
   }
 
-  const ranked = [...runs].sort((a, b) => score(b.stats, metric) - score(a.stats, metric));
+  // A run with no trades is not a good run, it is not a run. Scoring it puts net profit 0.00 at
+  // the top of every grid where everything else loses — so the "best parameters" reported to the
+  // user would be the ones that never opened a position. That is the classic way an optimizer
+  // lies, and it is worse than a wrong number because it looks like a safe result.
+  //
+  // Runs are ordered in two groups: those with a real sample first (by metric), then the empty
+  // ones. The empty ones are kept rather than dropped, because "this axis setting cannot trade"
+  // is information the user needs.
+  const tradable = runs.filter((r) => r.stats.tradeCount > 0);
+  const empty = runs.filter((r) => r.stats.tradeCount === 0);
+  const ranked = [
+    ...tradable.sort((a, b) => score(b.stats, metric) - score(a.stats, metric)),
+    ...empty,
+  ];
   return {
     runs,
     ranked,

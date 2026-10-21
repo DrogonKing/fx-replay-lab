@@ -400,6 +400,7 @@ export function computeStats(
 
   return {
     tradeCount: trades.length,
+    /** percentage (0..100); the field name is the contract, not the units */
     winRate: (wins / trades.length) * 100,
     netProfit,
     profitFactor: grossLoss > 0 ? grossProfit / grossLoss : grossProfit > 0 ? Infinity : 0,
