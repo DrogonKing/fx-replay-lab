@@ -100,8 +100,8 @@ console.log("0. SESSION STARTED:", await evalJs(`(async () => {
   for (let i = 0; i < 40 && !document.querySelector('[data-panel="start"]'); i++) await w(200);
   document.querySelector('[data-mode="replay"]')?.click();
   await w(400);
-  // 1m needs a FILE, so the go button is disabled there - pick a downloadable interval
-  document.querySelector('[data-interval="5"]')?.click();
+  // there is no interval picker any more: the app picks the finest resolution it can load for
+  // the window, so the button is enabled for any replay range the provider covers
   // then wait for the button to become ENABLED rather than guessing how long that takes
   let tries = 0;
   while (tries++ < 40) {

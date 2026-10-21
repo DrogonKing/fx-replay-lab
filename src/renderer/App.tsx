@@ -25,6 +25,9 @@ import { formatDateTime, formatOffset } from "../core/timezone.js";
 import { parseCsv } from "../core/csv.js";
 import { seriesFromCandles } from "../core/series.js";
 import {
+  canAggregate, detectTimeframe, explainUnavailable, framesAtOrAbove,
+} from "../core/resolution.js";
+import {
   DrawingHistory, type Drawing, type DrawingKind,
 } from "../core/drawings.js";
 import {
@@ -149,7 +152,25 @@ function makePriceSeries(
   const lineRefs = useRef<Map<string, ISeriesApi<"Line">>>(new Map());
 
   const [base, setBase] = useState<CandleSeries>(() => generateSampleSeries(30_000));
-  const [tf, setTf] = useState<Timeframe>(TIMEFRAMES[1]!);
+
+  /**
+   * What resolution is actually loaded?
+   *
+   * Detected from the bars, because four different load paths feed this chart — provider, file
+   * import, Dukascopy download, broker — and not all of them can report their interval. Reading
+   * it from the data is the one rule that works for all four, and it cannot lie.
+   */
+  const baseFrame = useMemo(() => detectTimeframe(base), [base]);
+
+  /**
+   * Every frame that can be BUILT from that base.
+   *
+   * This is what makes "all timeframes" honest rather than decorative: 1m data offers every
+   * frame, 5m data offers everything above 5m and refuses 1m, because a lower frame cannot be
+   * invented from coarser bars.
+   */
+  const availableFrames = useMemo(() => framesAtOrAbove(baseFrame), [baseFrame]);
+  const [tf, setTf] = useState<Timeframe>(TIMEFRAMES[0]!);
   const [custom, setCustom] = useState("");
   const [zone, setZone] = useState<string>("UTC");
   const [revealed, setRevealed] = useState(2_000);
@@ -583,12 +604,34 @@ function makePriceSeries(
     );
   }, []);
 
+  // A new load can change the detected base (a coarser file), which may make the current
+  // selection impossible. Fall back to the base rather than render coarser bars under a finer
+  // label — that would be a lie the chart cannot reveal.
+  useEffect(() => {
+    if (baseFrame === null) return;
+    if (!canAggregate(baseFrame, tf)) setTf(baseFrame);
+  }, [baseFrame, tf]);
+
+  // Keep the custom box in step with the selection, so it never shows a stale frame.
+  useEffect(() => {
+    setCustom(tf.kind === "minute" ? String(tf.minutes) : tf.label);
+  }, [tf]);
+
   const applyCustom = useCallback(() => {
     const parsed = parseTimeframeLabel(custom);
-    if (!parsed) { setStatus(`Invalid timeframe: ${custom}`); return; }
+    if (!parsed) {
+      setStatus(`Invalid timeframe: ${custom}. Use a number of minutes (7, 90) or a label (H2, D1).`);
+      return;
+    }
+    // a custom frame is only usable if it can be built from what is loaded — 7m from 15m bars
+    // would silently render 15m candles labelled 7m
+    if (!canAggregate(baseFrame, parsed)) {
+      setStatus(explainUnavailable(baseFrame, parsed));
+      return;
+    }
     setTf(parsed);
     setStatus(`Timeframe set to ${parsed.label}`);
-  }, [custom]);
+  }, [custom, baseFrame]);
 
   // ------------------------------------------------- drawing interaction
   /**
@@ -1183,7 +1226,7 @@ function makePriceSeries(
     });
   }, [logScale]);
 
-  const currentTime = view.length > 0 ? view.time[view.length - 1]! : 0;
+  const currentTime = view.length > 0 ? view.time[view.time.length - 1]! : 0;
   const lastBar = view.length > 0
     ? {
         open: view.open[view.length - 1]!, high: view.high[view.length - 1]!,
@@ -1283,17 +1326,54 @@ function makePriceSeries(
           {offline ? t("app.offline") : t("app.live")}
         </span>
 
-        <label>
+        <label title={t("app.tfHint")}>
           {t("app.tf")}{" "}
           <select
+            data-field="toolbar-tf"
             value={tf.label}
             onChange={(e) => {
-              const found = TIMEFRAMES.find((t) => t.label === e.target.value);
-              if (found) setTf(found);
+              const wanted = e.target.value;
+              const found = availableFrames.find((f) => f.label === wanted)
+                ?? parseTimeframeLabel(wanted);
+              if (!found) { setStatus(`Invalid timeframe: ${wanted}`); return; }
+              if (!canAggregate(baseFrame, found)) {
+                setStatus(explainUnavailable(baseFrame, found));
+                return;
+              }
+              setTf(found);
             }}
           >
-            {TIMEFRAMES.map((t) => <option key={t.label} value={t.label}>{t.label}</option>)}
+            {/* EVERY frame the app knows about is listed, so "all timeframes" is literally true
+                and a missing frame never looks like a missing feature. Frames that cannot be
+                built from the loaded bars are marked and disabled, with the reason on the label.
+
+                A custom frame (90m) is not a preset, so it is appended — otherwise the select
+                snaps back to the previous option and the control disagrees with the chart. */}
+            {[...TIMEFRAMES, ...(TIMEFRAMES.some((f) => f.label === tf.label) ? [] : [tf])]
+              .map((f) => {
+                const usable = canAggregate(baseFrame, f);
+                return (
+                  <option
+                    key={f.label}
+                    value={f.label}
+                    disabled={!usable}
+                    data-usable={usable ? "yes" : "no"}
+                  >
+                    {f.label}{usable ? "" : ` ${t("app.needsFiner")}`}
+                  </option>
+                );
+              })}
           </select>
+        </label>
+
+        <label title={t("app.customHint")}>
+          {t("app.custom")}{" "}
+          <input
+            className="w-16" value={custom} placeholder="7"
+            data-field="custom-tf"
+            onChange={(e) => setCustom(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") applyCustom(); }}
+          />
         </label>
 
         <label>
@@ -1318,15 +1398,6 @@ function makePriceSeries(
             onChange={(e) => setLogScale(e.target.checked)}
           />{" "}
           {t("app.logScale")}
-        </label>
-
-        <label>
-          {t("app.custom")}{" "}
-          <input
-            className="w-16" value={custom} placeholder="7"
-            onChange={(e) => setCustom(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter") applyCustom(); }}
-          />
         </label>
 
         <label>
@@ -1406,7 +1477,16 @@ function makePriceSeries(
         count={drawCount}
       />
 
-      <div className="chart-area" data-bars={base.time.length} data-mode={sessionMode}>
+      {/* data-bars is the VIEW length, not the base length: the whole point of a derived frame
+          is that it draws fewer, wider bars, and reporting the base made every frame look
+          identical to a test (and to anyone reading the DOM) */}
+      <div
+        className="chart-area"
+        data-bars={view.length}
+        data-base-bars={base.length}
+        data-frame={tf.label}
+        data-mode={sessionMode}
+      >
         <div ref={chartHost} className="chart-host" />
         <canvas
           ref={canvasRef}

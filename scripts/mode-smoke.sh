@@ -46,49 +46,95 @@ await sleep(3600);
 console.log("1. START SCREEN SHOWS TWO MODES:", await evalJs(`JSON.stringify({
   shown: !!document.querySelector('[data-panel="start"]'),
   modes: [...document.querySelectorAll('[data-mode]')].map(b => b.getAttribute('data-mode')),
-  intervals: [...document.querySelectorAll('[data-interval]')].map(b => b.getAttribute('data-interval')),
+  // no interval picker by design: the app loads the finest resolution the provider can serve
+  // and derives every frame above it in the toolbar
+  resolution: document.querySelector('[data-resolution]')?.getAttribute('data-resolution'),
+  noIntervalPicker: document.querySelectorAll('[data-interval]').length === 0,
   foot: document.querySelector('.start-foot')?.textContent?.slice(0, 60),
 })`));
 
-console.log("2. YEAR LIST REFUSES WHAT THE PROVIDER CANNOT SERVE:", await evalJs(`(async () => {
+console.log("2. THE APP PICKS THE RESOLUTION ITSELF, AND CLAMPS AN OLD RANGE:", await evalJs(`(async () => {
   const wait = (ms) => new Promise(r => setTimeout(r, ms));
-  // 5m: 60 days only, so this year is the only option
-  document.querySelector('[data-interval="5"]')?.click();
-  await wait(400);
-  const y5 = [...document.querySelectorAll('[data-field="start-year"] option')].map(o => o.value);
-  const avail5 = document.querySelector('[data-note="start-availability"]')?.getAttribute('data-verdict');
+  const setSel = (field, value) => {
+    const el = document.querySelector('[data-field="' + field + '"]');
+    if (!el) return false;
+    const set = Object.getOwnPropertyDescriptor(window.HTMLSelectElement.prototype, 'value').set;
+    set.call(el, value);
+    el.dispatchEvent(new Event('change', { bubbles: true }));
+    return true;
+  };
 
-  // 1D: decades
-  document.querySelector('[data-interval="1440"]')?.click();
-  await wait(400);
-  const y1d = [...document.querySelectorAll('[data-field="start-year"] option')].map(o => o.value);
+  const yearEl = document.querySelector('[data-field="start-year"]');
+  const nowYear = new Date().getUTCFullYear();
+  const resNow = document.querySelector('[data-resolution]')?.getAttribute('data-resolution');
+  const availNow = document.querySelector('[data-note="start-availability"]')?.getAttribute('data-verdict');
 
-  // 1m: 7 days, so nothing meaningful to replay
-  document.querySelector('[data-interval="1"]')?.click();
-  await wait(400);
-  const avail1 = document.querySelector('[data-note="start-availability"]')?.getAttribute('data-verdict');
-  const goDisabled = document.querySelector('[data-action="start-go"]')?.disabled;
+  // ask for a decade back: nothing intraday covers it, so it must land on daily
+  setSel('start-year', String(nowYear - 10));
+  await wait(600);
+  const resOld = document.querySelector('[data-resolution]')?.getAttribute('data-resolution');
+  const availOld = document.querySelector('[data-note="start-availability"]')?.getAttribute('data-verdict');
+  const noteOld = document.querySelector('[data-note="start-availability"]')?.textContent ?? '';
+  const goDisabledOld = document.querySelector('[data-action="start-go"]')?.disabled;
+
+  // back to this year: should return to a fine resolution
+  setSel('start-year', String(nowYear));
+  await wait(600);
+  const resBack = document.querySelector('[data-resolution]')?.getAttribute('data-resolution');
 
   return JSON.stringify({
-    years5m: y5, avail5m: avail5,
-    years1d_count: y1d.length, years1d_has2019: y1d.includes('2019'),
-    avail1m: avail1, goDisabledOn1m: goDisabled,
+    resolutionThisYear: resNow,
+    availThisYear: availNow,
+    resolution10yAgo: resOld,
+    avail10yAgo: availOld,
+    noteMentionsClamp: /clamp|starts|from/i.test(noteOld),
+    goDisabled10y: goDisabledOld,
+    resolutionBackToNow: resBack,
+    hasPicker: !!yearEl,
   });
 })()`));
 
-console.log("3. PICKING AN OLD YEAR IS CLAMPED, NOT SILENTLY EMPTY:", await evalJs(`(async () => {
+console.log("3. EVERY FRAME ABOVE THE LOADED ONE IS SELECTABLE, INCLUDING CUSTOM:", await evalJs(`(async () => {
   const wait = (ms) => new Promise(r => setTimeout(r, ms));
-  document.querySelector('[data-interval="5"]')?.click();
-  await wait(300);
-  // force the year select to an old value the picker does not offer
-  const sel = document.querySelector('[data-field="start-year"]');
-  const set = Object.getOwnPropertyDescriptor(window.HTMLSelectElement.prototype, 'value').set;
-  set.call(sel, '2019');
-  sel.dispatchEvent(new Event('change', { bubbles: true }));
-  await wait(500);
+  // enter the app on live so the toolbar exists
+  document.querySelector('[data-mode="live"]')?.click();
+  await wait(400);
+  const go = document.querySelector('[data-action="start-go"]');
+  if (go && !go.disabled) go.click();
+  for (let i = 0; i < 40 && !document.querySelector('.chart-host'); i++) await wait(300);
+
+  const sel = document.querySelector('[data-field="toolbar-tf"]');
+  const offered = sel ? [...sel.options].map(o => o.value) : [];
+  const current = sel?.value;
+  const customEl = document.querySelector('[data-field="custom-tf"]');
+
+  // a custom frame that CAN be built from the base must be accepted
+  let customAccepted = null;
+  let customRejected = null;
+  if (customEl) {
+    const setVal = (v) => {
+      const set = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+      set.call(customEl, v);
+      customEl.dispatchEvent(new Event('input', { bubbles: true }));
+      customEl.dispatchEvent(new Event('keydown', { bubbles: true, key: 'Enter' }));
+    };
+    // 3 minutes is finer than a 5m base, so it must be REFUSED with a reason
+    setVal('3');
+    await wait(500);
+    customRejected = (document.querySelector('.status')?.textContent ?? '').slice(0, 90);
+    // 90 minutes is coarser, so it must be ACCEPTED
+    setVal('90');
+    await wait(500);
+    customAccepted = document.querySelector('[data-field="toolbar-tf"]')?.value;
+  }
+
   return JSON.stringify({
-    note: document.querySelector('[data-note="start-availability"]')?.textContent?.slice(0, 110),
-    verdict: document.querySelector('[data-note="start-availability"]')?.getAttribute('data-verdict'),
+    currentFrame: current,
+    offeredFrames: offered,
+    offersMoreThanOne: offered.length > 1,
+    customInputPresent: !!customEl,
+    custom90accepted: customAccepted,
+    custom3refusedWithReason: /cannot be built|Invalid/i.test(customRejected ?? ''),
   });
 })()`));
 
@@ -96,8 +142,6 @@ console.log("4. LIVE MODE LOADS REAL BARS:", await evalJs(`(async () => {
   const wait = (ms) => new Promise(r => setTimeout(r, ms));
   document.querySelector('[data-mode="live"]')?.click();
   await wait(300);
-  document.querySelector('[data-interval="5"]')?.click();
-  await wait(200);
   document.querySelector('[data-action="start-go"]')?.click();
   await wait(11000);
 

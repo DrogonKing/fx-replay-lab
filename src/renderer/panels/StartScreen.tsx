@@ -5,19 +5,25 @@
  * are genuinely different things and the difference is not guessable from a toolbar: one moves
  * on its own, the other only when you step it.
  *
- * The availability line under the year picker is the important part. A user who picks 2019 at
- * 5 minutes must be told the provider only has 60 days — before the download, not after it
- * returns nothing.
+ * There is deliberately NO timeframe picker here. Asking for a frame before any data exists
+ * forces a choice the user cannot yet judge, and it also caps them: they pick 5m and can never
+ * see 1m afterwards. Instead the app loads the finest resolution the provider can serve for the
+ * chosen window, and every frame above it is derived in the toolbar by aggregation. A custom
+ * frame (7m, 90m, 3H) works the same way, because aggregation is arithmetic over the base bars.
+ *
+ * The availability line is still the important part: a mode or window the provider cannot serve
+ * must be said before the load, not discovered afterwards.
  */
 import React, { useMemo, useState } from "react";
 import { useI18n } from "../i18n-context.js";
 import {
-  availability, selectableYears, type SessionMode, type Availability,
+  availability, finestFor, type SessionMode, type Availability,
 } from "../../core/session-mode.js";
 
 export interface StartChoice {
   mode: SessionMode;
   symbol: string;
+  /** the resolution the app decided to load — the finest the provider can serve */
   intervalMinutes: number;
   /** replay only: the epoch second to start from */
   from?: number;
@@ -29,23 +35,16 @@ export interface StartScreenProps {
   symbols: Array<{ id: string; label: string }>;
   onStart: (choice: StartChoice) => void;
   onImport: () => void;
-  /** called when the user asks for a file instead of a download */
   initial?: SessionMode;
 }
-
-const INTERVALS: Array<{ minutes: number; label: string }> = [
-  { minutes: 1, label: "1m" },
-  { minutes: 5, label: "5m" },
-  { minutes: 15, label: "15m" },
-  { minutes: 30, label: "30m" },
-  { minutes: 60, label: "1H" },
-  { minutes: 1440, label: "1D" },
-];
 
 const MONTHS = [
   "January", "February", "March", "April", "May", "June",
   "July", "August", "September", "October", "November", "December",
 ];
+
+/** How far back the replay can start, in years. The provider clamps it per resolution. */
+const YEAR_SPAN = 20;
 
 export function StartScreen({
   symbols, onStart, onImport, initial = "replay",
@@ -53,22 +52,32 @@ export function StartScreen({
   const { t } = useI18n();
   const [mode, setMode] = useState<SessionMode>(initial);
   const [symbol, setSymbol] = useState(symbols[0]?.id ?? "GC=F");
-  const [intervalMinutes, setIntervalMinutes] = useState(5);
   const [year, setYear] = useState(() => new Date().getUTCFullYear());
   const [month, setMonth] = useState(0);
 
   const now = Math.floor(Date.now() / 1000);
-  const years = useMemo(() => selectableYears(intervalMinutes, now), [intervalMinutes, now]);
+  const from = Math.floor(Date.UTC(year, month, 1) / 1000);
 
-  // The picked year/month can fall outside the offered range after an interval change, which
-  // would silently request a window the provider refuses.
-  const safeYear = years.includes(year) ? year : years[0] ?? year;
+  // The resolution is CHOSEN, not asked: the finest one that can cover the requested window.
+  // Asking the user would be asking them to solve a constraint they cannot see.
+  const intervalMinutes = useMemo(
+    () => finestFor(from, now),
+    [from, now],
+  );
 
-  const from = Math.floor(Date.UTC(safeYear, month, 1) / 1000);
   const avail: Availability = useMemo(
     () => availability(intervalMinutes, from, now),
     [intervalMinutes, from, now],
   );
+
+  const years = useMemo(() => {
+    const out: number[] = [];
+    const current = new Date().getUTCFullYear();
+    for (let y = current; y > current - YEAR_SPAN; y--) out.push(y);
+    return out;
+  }, []);
+
+  const safeYear = years.includes(year) ? year : years[0] ?? year;
 
   const canDownload = mode === "live" || avail.verdict === "ok" || avail.verdict === "clamped";
 
@@ -108,56 +117,51 @@ export function StartScreen({
           </select>
         </label>
 
-        <div className="start-field">
-          {t("start.interval")}
-          <div className="start-intervals">
-            {INTERVALS.map((iv) => (
-              <button
-                key={iv.minutes}
-                data-interval={iv.minutes}
-                className={intervalMinutes === iv.minutes ? "si on" : "si"}
-                onClick={() => setIntervalMinutes(iv.minutes)}
-              >{iv.label}</button>
-            ))}
+        {mode === "replay" && (
+          <div className="start-field">
+            {t("start.from")}
+            <div className="start-intervals">
+              <select
+                data-field="start-month"
+                value={month}
+                onChange={(e) => setMonth(Number(e.target.value))}
+              >
+                {MONTHS.map((m, i) => <option key={m} value={i}>{m}</option>)}
+              </select>
+              <select
+                data-field="start-year"
+                value={safeYear}
+                onChange={(e) => setYear(Number(e.target.value))}
+              >
+                {years.map((y) => <option key={y} value={y}>{y}</option>)}
+              </select>
+            </div>
           </div>
+        )}
+
+        {/*
+          The resolution the app is about to load, stated plainly. This is not a picker: the
+          user gets every frame above it in the toolbar, so there is nothing to choose here —
+          but they deserve to know what is being fetched.
+        */}
+        <div className="kv" data-kv="start-resolution">
+          <span>{t("start.resolution")}</span>
+          <b data-resolution={intervalMinutes}>
+            {intervalMinutes >= 1440 ? "1D" : `${intervalMinutes}m`}
+          </b>
         </div>
 
         {mode === "replay" && (
-          <>
-            <div className="start-field">
-              {t("start.period")}
-              <div className="start-period">
-                <select
-                  data-field="start-year"
-                  value={safeYear}
-                  onChange={(e) => setYear(Number(e.target.value))}
-                >
-                  {years.map((y) => <option key={y} value={y}>{y}</option>)}
-                </select>
-                <select
-                  data-field="start-month"
-                  value={month}
-                  onChange={(e) => setMonth(Number(e.target.value))}
-                >
-                  {MONTHS.map((m, i) => <option key={m} value={i}>{m}</option>)}
-                </select>
-              </div>
-            </div>
-
-            {/* The honest limit, stated before the download rather than after it fails. */}
-            <p
-              className={
-                avail.verdict === "ok" ? "start-avail"
-                  : avail.verdict === "clamped" ? "start-avail warn"
-                    : "start-avail bad"
-              }
-              data-note="start-availability"
-              data-verdict={avail.verdict}
-            >
-              {avail.message}
-            </p>
-          </>
+          <p
+            className={avail.verdict === "ok" ? "msg" : "msg warn"}
+            data-note="start-availability"
+            data-verdict={avail.verdict}
+          >
+            {avail.message}
+          </p>
         )}
+
+        <p className="msg">{t("start.framesNote")}</p>
 
         <div className="start-actions">
           <button

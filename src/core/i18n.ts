@@ -167,6 +167,11 @@ export const MESSAGES: Record<Lang, Record<string, string>> = {
     "equity.nowDd": "current drawdown",
     "equity.empty": "no closed trades yet — the curve appears after the first one",
     "tab.download": "data",
+    "start.resolution": "loading resolution",
+    "start.framesNote": "Every timeframe above this is built from it, and you can type any custom one (7m, 90m, 3H).",
+    "app.tfHint": "All frames are listed. Ones marked as needing finer data cannot be built from the loaded bars.",
+    "app.needsFiner": "(needs finer data)",
+    "app.customHint": "Any length in minutes (7, 90) or a label (H2, D3). Press Enter.",
     "tab.broker": "broker",
     "tab.indicators": "indicators",
 
@@ -366,6 +371,11 @@ export const MESSAGES: Record<Lang, Record<string, string>> = {
     "tab.trade": "معامله",
     "tab.news": "اخبار",
     "tab.download": "دانلود",
+    "start.resolution": "رزولوشن بارگذاری",
+    "start.framesNote": "همهٔ تایم‌فریم‌های بالاتر از همین ساخته می‌شوند، و هر کاستومی (۷m، ۹۰m، ۳H) را می‌توانی تایپ کنی.",
+    "app.tfHint": "همهٔ فریم‌ها فهرست شده‌اند. آن‌هایی که «دادهٔ ریزتر» دارند از کندل‌های فعلی ساخته نمی‌شوند.",
+    "app.needsFiner": "(دادهٔ ریزتر لازم دارد)",
+    "app.customHint": "هر طولی به دقیقه (۷، ۹۰) یا برچسب (H2، D3). Enter بزن.",
     "tab.broker": "بروکر",
     "tab.sessions": "سشن‌ها",
 

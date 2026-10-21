@@ -73,6 +73,33 @@ export interface Availability {
  * `now` is injected rather than read from the clock so this is testable and so a replay does
  * not shift meaning depending on when the app is opened.
  */
+/**
+ * The finest resolution that can cover a window.
+ *
+ * The start screen does not ask for a timeframe, because asking forces a choice before any data
+ * exists AND caps the user at it: pick 5m and 1m is gone forever. So the app loads the FINEST
+ * data its provider can serve for the window it was asked for, and derives every coarser frame
+ * (plus custom ones) by aggregation.
+ *
+ * Order matters: 1m is tried first because it gives the most derived frames, and the provider's
+ * own retention is what decides. A year-long window cannot have 1m — nothing keeps a year of it
+ * for free — so it lands on the coarsest interval that does cover it.
+ */
+export function finestFor(fromEpoch: number, now: number): number {
+  const windowDays = Math.max(1, Math.ceil((now - fromEpoch) / 86400));
+  // finest first: more bars is strictly better, since aggregation only goes one way
+  const candidates = Object.keys(INTRADAY_LIMIT_DAYS)
+    .map(Number)
+    .sort((a, b) => a - b);
+
+  for (const minutes of candidates) {
+    const limit = INTRADAY_LIMIT_DAYS[minutes]!;
+    if (limit >= windowDays) return minutes;
+  }
+  // nothing intraday covers it: daily is the widest the provider has
+  return 1440;
+}
+
 export function availability(
   intervalMinutes: number,
   fromEpoch: number,
