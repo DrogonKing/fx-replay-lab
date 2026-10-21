@@ -20,6 +20,24 @@ export interface BrokerCandleResult {
   error?: string;
 }
 
+/**
+ * Strip any endpoint path from a bridge URL, leaving the origin.
+ *
+ * A user who copies "http://127.0.0.1:8765/health" out of a curl example, or pastes
+ * "http://127.0.0.1:8765/candles?symbol=...", means "my bridge is here" — not "probe this exact
+ * path". Appending "/health" to that produced "/health/health", which the allowlist refuses with
+ * "not a local bridge address", blaming the host for a path problem.
+ */
+export function bridgeOrigin(url: string): string {
+  try {
+    const u = new URL(url.trim());
+    return `${u.protocol}//${u.host}`;
+  } catch {
+    // let the caller's validation produce the error message, with its own wording
+    return url.trim().replace(/\/+$/, "");
+  }
+}
+
 /** Timeout for a bridge probe. A local process answers in milliseconds or not at all. */
 const PROBE_TIMEOUT_MS = 4000;
 /** A candle request can be slow the first time a broker downloads history. */
@@ -42,7 +60,8 @@ export async function testBridge(url: string): Promise<{
   lastTime?: string;
   error?: string;
 }> {
-  const healthUrl = `${url.replace(/\/+$/, "")}/health`;
+  const base = bridgeOrigin(url);
+  const healthUrl = `${base}/health`;
   if (!bridgeUrlAllowed(healthUrl)) {
     return {
       ok: false,
@@ -83,7 +102,7 @@ export async function testBridge(url: string): Promise<{
   // most common reason a bridge "does not work")
   let symbols: string[] = [];
   try {
-    const res = await fetch(`${url.replace(/\/+$/, "")}/symbols`, {
+    const res = await fetch(`${base}/symbols`, {
       signal: AbortSignal.timeout(PROBE_TIMEOUT_MS * 3),
     });
     if (res.ok) {
@@ -106,7 +125,7 @@ export async function testBridge(url: string): Promise<{
     const q = new URLSearchParams({
       symbol: candidate, timeframe: "M1", from: String(from), to: String(to),
     });
-    const cUrl = `${url.replace(/\/+$/, "")}/candles?${q.toString()}`;
+    const cUrl = `${base}/candles?${q.toString()}`;
     if (!bridgeUrlAllowed(cUrl)) {
       return { ok: false, health, symbols, error: "refused: bridge URL not allowed" };
     }
@@ -147,7 +166,7 @@ export async function fetchBridgeCandles(req: {
     from: String(req.from),
     to: String(req.to),
   });
-  const url = `${req.url.replace(/\/+$/, "")}/candles?${q.toString()}`;
+  const url = `${bridgeOrigin(req.url)}/candles?${q.toString()}`;
   if (!bridgeUrlAllowed(url)) {
     return { ok: false, error: "refused: bridge URL not allowed" };
   }
