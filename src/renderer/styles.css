@@ -138,3 +138,119 @@ html, body, #root {
   color: #4c525e;
   font-size: 11px;
 }
+
+/* ---------------------------------------------------------------- timezone picker
+
+   A floating dialog under the toolbar button, matching the reference: rows read
+   "City  UTC±N", the current one is highlighted, and market centres carry a dot.
+   Positioned absolutely so it overlays the chart instead of reflowing the toolbar —
+   a toolbar that reflows when a menu opens is the classic sign of a layout afterthought. */
+
+.tz { position: relative; }
+
+.tz-button {
+  background: #2a2e39;
+  border: 1px solid #363a45;
+  color: #d1d4dc;
+  border-radius: 4px;
+  padding: 3px 8px;
+  font-size: 12px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.tz-button:hover { background: #363a45; }
+
+.tz-caret { color: #787b86; font-size: 10px; }
+
+.tz-dialog {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 60;
+  width: 268px;
+  background: #1e222d;
+  border: 1px solid #363a45;
+  border-radius: 6px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.55);
+  padding: 8px;
+}
+
+.tz-search {
+  width: 100%;
+  box-sizing: border-box;
+  background: #131722;
+  border: 1px solid #363a45;
+  color: #d1d4dc;
+  border-radius: 4px;
+  padding: 5px 7px;
+  font-size: 12px;
+  margin-bottom: 6px;
+}
+
+.tz-search:focus { outline: none; border-color: #2962ff; }
+
+.tz-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.tz-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 7px;
+  font-size: 12px;
+  color: #b2b5be;
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+/* hover state is driven by the keyboard cursor too, so arrow keys and the mouse agree */
+.tz-row.active { background: #2a2e39; }
+
+.tz-row.on { color: #2962ff; }
+
+.tz-row.on .tz-offset { color: #2962ff; }
+
+.tz-city { display: inline-flex; align-items: center; gap: 6px; }
+
+.tz-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #f0b90b;
+  display: inline-block;
+  flex: 0 0 auto;
+}
+
+.tz-offset {
+  color: #787b86;
+  font-variant-numeric: tabular-nums;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.tz-dst {
+  font-size: 9px;
+  color: #f0b90b;
+  border: 1px solid #4a4022;
+  border-radius: 2px;
+  padding: 0 3px;
+}
+
+.tz-foot {
+  margin: 7px 0 0;
+  padding-top: 6px;
+  border-top: 1px solid #2a2e39;
+  color: #4c525e;
+  font-size: 10px;
+  line-height: 1.4;
+}

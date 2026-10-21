@@ -73,6 +73,7 @@ import { StrategyPanel } from "./panels/StrategyPanel.js";
 import { JournalPanel } from "./panels/JournalPanel.js";
 import { DownloaderPanel } from "./panels/DownloaderPanel.js";
 import { BrokerPanel } from "./panels/BrokerPanel.js";
+import { TimezonePicker } from "./panels/TimezonePicker.js";
 import { createFeed, symbols as LIVE_SYMBOLS } from "./livefeed.js";
 import type { Feed, FeedStatus } from "../core/feed.js";
 import type { Candle, CandleSeries, Timeframe } from "../core/types.js";
@@ -1400,15 +1401,13 @@ function makePriceSeries(
           {t("app.logScale")}
         </label>
 
-        <label>
-          {t("app.tz")}{" "}
-          <select value={zone} onChange={(e) => setZone(e.target.value)}>
-            {["UTC", "America/New_York", "Europe/London", "Europe/Berlin",
-              "Asia/Tehran", "Asia/Dubai", "Asia/Tokyo", "Australia/Sydney"].map((z) => (
-              <option key={z} value={z}>{z}</option>
-            ))}
-          </select>
-        </label>
+        {/* The picker takes the chart's own time as its reference, so a replay of last July shows
+            the DST offsets that were in force then — not today's. */}
+        <TimezonePicker
+          value={zone}
+          referenceEpoch={currentTime || Math.floor(Date.now() / 1000)}
+          onChange={setZone}
+        />
 
         <button onClick={() => setPlaying((p) => !p)}>
           {playing ? t("app.pause") : t("app.play")}
