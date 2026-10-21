@@ -354,6 +354,23 @@ export function BrokerPanel({ onLoad, onStatus }: BrokerPanelProps): JSX.Element
           <div className="br-login" data-note="br-login-block" data-collapsed={bridgeState === "ok" ? "yes" : "no"}>
             {bridgeState === "ok" && <p className="msg">{t("br.loginSwitch")}</p>}
             {bridgeState !== "ok" && <p className="msg">{t("br.loginHint")}</p>}
+
+            {/*
+              The prerequisite, said plainly and near the button.
+              The bridge is a separate Python process the user starts on their own machine; the app
+              cannot start it, and this panel used to say nothing about it. A working Log in button
+              with no bridge behind it therefore read as a broken button.
+            */}
+            <div className="br-howto" data-note="br-bridge-howto">
+              <b>{t("br.howtoTitle")}</b>
+              <ol>
+                <li>{t("br.howto1")}</li>
+                <li>{t("br.howto2")}</li>
+                <li>{t("br.howto3")}</li>
+              </ol>
+              <code>python bridge/mt5-bridge.py</code>
+              <span className="br-howto-note">{t("br.howtoNote")}</span>
+            </div>
             <label className="field">
               {t("br.login")}
               <input

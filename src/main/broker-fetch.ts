@@ -79,13 +79,7 @@ export async function testBridge(url: string): Promise<{
     }
     health = (await res.json()) as typeof health;
   } catch (e) {
-    const msg = (e as Error).message;
-    return {
-      ok: false,
-      error:
-        `could not reach ${healthUrl} — is the bridge running? ` +
-        `(python bridge/mt5-bridge.py) — ${msg}`,
-    };
+    return { ok: false, error: explainFetchFailure(e, healthUrl) };
   }
 
   if (health.connected !== true) {
@@ -193,8 +187,39 @@ export async function bridgeLogin(req: {
     }
     return { ok: false, error: scrub(body.error ?? `login refused with HTTP ${res.status}`) };
   } catch (e) {
-    return { ok: false, error: scrub(`could not reach the bridge: ${(e as Error).message}`) };
+    return { ok: false, error: scrub(explainFetchFailure(e, url)) };
   }
+}
+
+/**
+ * Turn a fetch failure into something a user can act on.
+ *
+ * Node reports every connection problem as "fetch failed" and hides the reason in `cause`. That
+ * string is what a user saw when they pressed Log in with no bridge running, and it reads like the
+ * button is broken rather than like a prerequisite is missing. The cause codes are stable
+ * (`ECONNREFUSED`, `ENOTFOUND`, `ETIMEDOUT`, `UND_ERR_CONNECT_TIMEOUT`), so they can be mapped to a
+ * sentence that names the next action.
+ */
+export function explainFetchFailure(e: unknown, url: string): string {
+  const cause = (e as { cause?: { code?: string; message?: string } }).cause;
+  const code = cause?.code ?? "";
+  const base = bridgeOrigin(url);
+  if (code === "ECONNREFUSED") {
+    return `nothing is listening at ${base} — the bridge is not running. Start it with: ` +
+      `python bridge/mt5-bridge.py (on the Windows machine where MetaTrader is installed), ` +
+      `then press Log in again.`;
+  }
+  if (code === "ENOTFOUND" || code === "EAI_AGAIN") {
+    return `${base} does not resolve — check the address; the bridge runs on 127.0.0.1 or localhost.`;
+  }
+  if (code === "ETIMEDOUT" || code === "UND_ERR_CONNECT_TIMEOUT" || code === "ETIMEDOUT") {
+    return `${base} did not answer in time. The bridge may be starting; try again in a moment.`;
+  }
+  if (code === "ECONNRESET" || code === "UND_ERR_SOCKET") {
+    return `the connection to ${base} was closed mid-request. Check the bridge's console for a traceback.`;
+  }
+  const detail = cause?.code ?? cause?.message ?? (e as Error).message;
+  return `could not reach ${base} (${detail}). Is the bridge running on that port?`;
 }
 
 /** Bars from a bridge. The bridge's own error text is passed through unchanged. */
