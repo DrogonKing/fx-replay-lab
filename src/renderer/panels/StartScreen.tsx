@@ -51,7 +51,9 @@ export function StartScreen({
 }: StartScreenProps): JSX.Element {
   const { t } = useI18n();
   const [mode, setMode] = useState<SessionMode>(initial);
-  const [symbol, setSymbol] = useState(symbols[0]?.id ?? "GC=F");
+  // The start screen does not choose an instrument any more; it reports the current one so the
+  // choice object keeps its shape. The toolbar owns instrument selection.
+  const symbol = symbols[0]?.id ?? "EURUSD=X";
   const [year, setYear] = useState(() => new Date().getUTCFullYear());
   const [month, setMonth] = useState(0);
 
@@ -106,16 +108,9 @@ export function StartScreen({
           </button>
         </div>
 
-        <label className="start-field">
-          {t("start.symbol")}
-          <select
-            data-field="start-symbol"
-            value={symbol}
-            onChange={(e) => setSymbol(e.target.value)}
-          >
-            {symbols.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
-          </select>
-        </label>
+        {/* The instrument is NOT chosen here. It is chosen in the toolbar, where it can be
+            changed at any time while the chart is up — asking on this screen meant the same
+            question was answered twice, and the answer given here silently won. */}
 
         {mode === "replay" && (
           <div className="start-field">

@@ -55,11 +55,18 @@ const INTERVALS: Record<number, string> = {
 };
 
 /** Symbols worth offering in the picker, chosen for this user's instruments. */
+/**
+ * The instrument list, default first.
+ *
+ * EUR/USD leads because this is a forex tool: the first entry is what the app opens on, and
+ * starting a forex app on gold futures is a choice nobody asked for. Gold keeps its alias mapping
+ * below, so XAUUSD still resolves.
+ */
 export const YAHOO_SYMBOLS: SymbolInfo[] = [
-  { id: "GC=F", label: "Gold futures (XAUUSD proxy)", kind: "metal", currency: "USD" },
   { id: "EURUSD=X", label: "EUR/USD", kind: "fx", currency: "USD" },
   { id: "GBPUSD=X", label: "GBP/USD", kind: "fx", currency: "USD" },
   { id: "USDJPY=X", label: "USD/JPY", kind: "fx", currency: "JPY" },
+  { id: "GC=F", label: "Gold futures (XAUUSD proxy)", kind: "metal", currency: "USD" },
   { id: "BTC-USD", label: "Bitcoin / USD", kind: "crypto", currency: "USD" },
   { id: "^GSPC", label: "S&P 500", kind: "index", currency: "USD" },
   { id: "^NDX", label: "Nasdaq 100", kind: "index", currency: "USD" },

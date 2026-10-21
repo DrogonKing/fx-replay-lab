@@ -35,6 +35,126 @@ html, body, #root {
 
 .brand { color: #f0b90b; letter-spacing: 0.5px; }
 
+/* ---- timeframe / instrument menus in the toolbar ---- */
+
+.tf-menu { position: relative; }
+
+.tf-button {
+  background: #2a2e39;
+  border: 1px solid #363a45;
+  color: #d1d4dc;
+  border-radius: 4px;
+  padding: 3px 8px;
+  font-size: 12px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 46px;
+  justify-content: center;
+}
+
+.tf-button:hover { background: #363a45; }
+.sym-button { min-width: 96px; justify-content: space-between; }
+.tf-caret { color: #787b86; font-size: 10px; }
+
+/*
+  Fixed, not absolute: the toolbar scrolls (`overflow-x: auto`), which clips positioned children.
+  The same bug already shipped once in this toolbar with the timezone dialog, so the pattern is
+  reused deliberately rather than rediscovered.
+*/
+.tf-dialog {
+  position: fixed;
+  z-index: 200;
+  width: 232px;
+  max-height: 62vh;
+  overflow-y: auto;
+  background: #1e222d;
+  border: 1px solid #363a45;
+  border-radius: 6px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.55);
+  padding: 6px;
+}
+
+.sym-dialog { width: 232px; }
+
+.tf-section {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.7px;
+  color: #787b86;
+  padding: 4px 6px 2px;
+}
+
+.tf-list { list-style: none; margin: 0; padding: 0; }
+
+.tf-row { display: flex; align-items: center; gap: 2px; }
+
+.tf-pick {
+  flex: 1;
+  text-align: start;
+  background: transparent;
+  border: 0;
+  color: #d1d4dc;
+  font-size: 12px;
+  padding: 5px 6px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.tf-pick:hover:not(:disabled) { background: #2a2e39; }
+.tf-pick.on { color: #2962ff; font-weight: 600; }
+.tf-pick:disabled { color: #4c525e; cursor: not-allowed; }
+
+.tf-star {
+  background: transparent;
+  border: 0;
+  color: #4c525e;
+  cursor: pointer;
+  font-size: 11px;
+  padding: 2px 5px;
+  border-radius: 3px;
+}
+
+.tf-star:hover { color: #f0b90b; background: #2a2e39; }
+.tf-star.on { color: #f0b90b; }
+
+.tf-sep { height: 1px; background: #2a2e39; margin: 6px 4px; }
+
+.tf-custom { display: flex; gap: 4px; padding: 2px 4px; }
+
+.tf-custom input {
+  flex: 1;
+  background: #131722;
+  border: 1px solid #363a45;
+  border-radius: 4px;
+  color: #d1d4dc;
+  font-size: 12px;
+  padding: 4px 6px;
+}
+
+.tf-custom input:focus { outline: none; border-color: #2962ff; }
+
+.tf-custom button {
+  background: #2a2e39;
+  border: 1px solid #363a45;
+  color: #d1d4dc;
+  border-radius: 4px;
+  cursor: pointer;
+  padding: 2px 9px;
+}
+
+.tf-custom button:hover { background: #363a45; }
+
+.tf-foot {
+  margin: 6px 4px 2px;
+  padding-top: 5px;
+  border-top: 1px solid #2a2e39;
+  color: #4c525e;
+  font-size: 10px;
+  line-height: 1.4;
+}
+
 .panel-toggle {
   background: #2a2e39;
   border: 1px solid #363a45;

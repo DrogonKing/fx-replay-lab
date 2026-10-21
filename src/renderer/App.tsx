@@ -39,6 +39,9 @@ import { DrawingToolbar, TOOL_LABELS, ALL_KINDS } from "./DrawingToolbar.js";
 import { ToolSettings } from "./panels/ToolSettings.js";
 import { StartScreen, type StartChoice } from "./panels/StartScreen.js";
 import {
+  TimeframeMenu, SymbolMenu, loadTfFavourites, saveTfFavourites,
+} from "./TimeframeMenu.js";
+import {
   mergeSeries, newBarIndices, availability, effectiveFrom, describeMode,
   parseModeState, type SessionMode, type ModeState,
 } from "../core/session-mode.js";
@@ -243,7 +246,18 @@ function makePriceSeries(
     blocked: false,
   });
   const [offline, setOffline] = useState(true);
-  const [symbolId, setSymbolId] = useState("GC=F");
+  // EUR/USD: this is a forex tool and the start screen no longer asks, so the default is the
+  // instrument the app is actually for.
+  const [symbolId, setSymbolId] = useState("EURUSD=X");
+
+  /**
+   * Frames pinned to the top of the menu.
+   *
+   * Persisted, because pinning is a statement of preference, not a one-off. Two sensible defaults
+   * are seeded so the favourites section is not empty and therefore not discoverable on first run.
+   */
+  const [tfFavourites, setTfFavourites] = useState<string[]>(loadTfFavourites);
+  useEffect(() => { saveTfFavourites(tfFavourites); }, [tfFavourites]);
 
   /**
    * Trading session, rebuilt when the symbol changes.
@@ -577,7 +591,14 @@ function makePriceSeries(
   }, [symbolId, session]);
 
   // ------------------------------------------------------------- loading
-  const loadLive = useCallback(async (): Promise<void> => {
+  /**
+   * Fetch the live window for a symbol.
+   *
+   * `forSymbol` exists because React state updates are asynchronous: after choosing a new
+   * instrument the old `symbolId` is still in scope for this render, so the fetch would request
+   * the PREVIOUS symbol and the chart would appear not to change.
+   */
+  const loadLive = useCallback(async (forSymbol?: string): Promise<void> => {
     if (offline) {
       setStatus("Offline mode is on — import a CSV or turn it off to fetch.");
       return;
@@ -586,7 +607,7 @@ function makePriceSeries(
     try {
       if (!feedRef.current) feedRef.current = createFeed();
       const r = await feedRef.current.load({
-        symbol: symbolId,
+        symbol: forSymbol ?? symbolId,
         intervalMinutes: 5,
         from: Math.floor(Date.now() / 1000) - 30 * 86400,
       });
@@ -1414,45 +1435,33 @@ function makePriceSeries(
           {offline ? t("app.offline") : t("app.live")}
         </span>
 
-        <label title={t("app.tfHint")}>
-          {t("app.tf")}{" "}
-          <select
-            data-field="toolbar-tf"
-            value={tf.label}
-            onChange={(e) => {
-              const wanted = e.target.value;
-              const found = availableFrames.find((f) => f.label === wanted)
-                ?? parseTimeframeLabel(wanted);
-              if (!found) { setStatus(`Invalid timeframe: ${wanted}`); return; }
-              if (!canAggregate(baseFrame, found)) {
-                setStatus(explainUnavailable(baseFrame, found));
-                return;
-              }
-              setTf(found);
-            }}
-          >
-            {/* EVERY frame the app knows about is listed, so "all timeframes" is literally true
-                and a missing frame never looks like a missing feature. Frames that cannot be
-                built from the loaded bars are marked and disabled, with the reason on the label.
+        <SymbolMenu
+          symbols={LIVE_SYMBOLS.map((s) => ({ id: s.id, label: s.label }))}
+          current={symbolId}
+          onChoose={(id) => { setSymbolId(id); void loadLive(id); }}
+        />
 
-                A custom frame (90m) is not a preset, so it is appended — otherwise the select
-                snaps back to the previous option and the control disagrees with the chart. */}
-            {[...TIMEFRAMES, ...(TIMEFRAMES.some((f) => f.label === tf.label) ? [] : [tf])]
-              .map((f) => {
-                const usable = canAggregate(baseFrame, f);
-                return (
-                  <option
-                    key={f.label}
-                    value={f.label}
-                    disabled={!usable}
-                    data-usable={usable ? "yes" : "no"}
-                  >
-                    {f.label}{usable ? "" : ` ${t("app.needsFiner")}`}
-                  </option>
-                );
-              })}
-          </select>
-        </label>
+        <TimeframeMenu
+          current={tf}
+          frames={[...TIMEFRAMES, ...(TIMEFRAMES.some((f) => f.label === tf.label) ? [] : [tf])]}
+          baseFrame={baseFrame ?? tf}
+          favourites={tfFavourites}
+          onToggleFavourite={(label) =>
+            setTfFavourites((f) => (f.includes(label) ? f.filter((x) => x !== label) : [...f, label]))}
+          onChoose={(f) => setTf(f)}
+          onReject={(f) => setStatus(explainUnavailable(baseFrame ?? tf, f))}
+          onCustom={(label) => {
+            const found = parseTimeframeLabel(label);
+            if (!found) { setStatus(`Invalid timeframe: ${label}`); return false; }
+            if (!canAggregate(baseFrame ?? tf, found)) {
+              setStatus(explainUnavailable(baseFrame ?? tf, found));
+              return false;
+            }
+            setTf(found);
+            return true;
+          }}
+        />
+
 
         <label title={t("app.customHint")}>
           {t("app.custom")}{" "}
