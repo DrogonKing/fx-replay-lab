@@ -91,7 +91,7 @@ console.log("1. THE PACKAGED APP RENDERS (no white screen):", await evalJs(`JSON
   hasMenu: !!document.querySelector('.start-title'),
 })`));
 
-console.log("2. IT LOADS A CHART AND DERIVES FRAMES:", await evalJs(`(async () => {
+console.log("2. IT LOADS A CHART, SHOWS EUR/USD, AND THE FRAME MENU LISTS ALL FRAMES:", await evalJs(`(async () => {
   const w = (ms) => new Promise(r => setTimeout(r, ms));
   document.querySelector('[data-mode="live"]')?.click();
   await w(500);
@@ -99,15 +99,24 @@ console.log("2. IT LOADS A CHART AND DERIVES FRAMES:", await evalJs(`(async () =
   const wasDisabled = go ? go.disabled : null;
   if (go && !go.disabled) go.click();
   for (let i = 0; i < 80 && !document.querySelector('.chart-host'); i++) await w(400);
-  const sel = document.querySelector('[data-field="toolbar-tf"]');
-  const opts = sel ? [...sel.options] : [];
+  // the select is gone by design; the frames now live in the menu
+  document.querySelector('[data-action="tf-open"]')?.click();
+  await w(700);
+  const rows = [...document.querySelectorAll('[data-tf-row]')].map(r => r.getAttribute('data-tf-row'));
+  const usable = [...document.querySelectorAll('[data-tf-row][data-usable="yes"]')].length;
+  document.querySelector('[data-action="tf-open"]')?.click();
+  await w(300);
+  const sym = document.querySelector('[data-field="sym-current"]');
   return JSON.stringify({
     goWasDisabled: wasDisabled,
     hasChart: !!document.querySelector('.chart-host'),
     frame: document.querySelector('[data-frame]')?.getAttribute('data-frame'),
+    symbol: sym?.getAttribute('data-symbol'),
+    defaultIsEurUsd: sym?.getAttribute('data-symbol') === 'EURUSD=X',
     allMainFramesListed: ['M1','M5','M15','M30','H1','H4','D1','W1']
-      .every(f => opts.some(o => o.value === f)),
-    usableCount: opts.filter(o => o.getAttribute('data-usable') === 'yes').length,
+      .every(f => rows.includes(f)),
+    usableCount: usable,
+    oldSelectGone: !document.querySelector('[data-field="toolbar-tf"]'),
     bars: document.querySelector('[data-bars]')?.getAttribute('data-bars'),
   });
 })()`));
@@ -167,7 +176,49 @@ console.log("5. THE BRIDGE BOUNDARY HOLDS IN THE PACKAGED BUILD:", await evalJs(
   });
 })()`));
 
-console.log("6. NO CRASH AFTER ALL OF THAT:", await evalJs(`JSON.stringify({
+console.log("6. THE CHART ACTUALLY PAINTS (the v0.1.0 bug):", await evalJs(`(() => {
+  // v0.1.0 shipped with .chart-host permanently empty: the creation effect ran once on the start
+  // screen where the host did not exist. Counting canvases AND their painted pixels is the check
+  // that would have caught it.
+  const host = document.querySelector('.chart-host');
+  const canvases = [...(host?.querySelectorAll('canvas') ?? [])];
+  let painted = 0;
+  for (const c of canvases) {
+    try {
+      const ctx = c.getContext('2d');
+      if (!ctx) continue;
+      const d = ctx.getImageData(0, 0, Math.min(c.width, 400), Math.min(c.height, 400)).data;
+      let nonBg = 0;
+      for (let i = 0; i < d.length; i += 16) {
+        if (d[i] > 40 || d[i + 1] > 44 || d[i + 2] > 55) nonBg++;
+      }
+      if (nonBg > 200) painted++;
+    } catch { /* a canvas we cannot read is not evidence of painting */ }
+  }
+  return JSON.stringify({
+    chartHostChildren: host?.children.length ?? -1,
+    canvasCount: canvases.length,
+    paintedCanvases: painted,
+    chartPaints: canvases.length > 0 && painted > 0,
+  });
+})()`));
+
+console.log("7. THE SIDE PANEL CAN BE HIDDEN IN THE PACKAGE:", await evalJs(`(async () => {
+  const w = (ms) => new Promise(r => setTimeout(r, ms));
+  const btn = document.querySelector('[data-action="panel-toggle"]');
+  if (!btn) return JSON.stringify({ problem: "no toggle" });
+  const before = Math.round(document.querySelector('.chart-host')?.getBoundingClientRect().width ?? 0);
+  btn.click();
+  await w(700);
+  const after = Math.round(document.querySelector('.chart-host')?.getBoundingClientRect().width ?? 0);
+  const hidden = !document.querySelector('aside.panel') ||
+    getComputedStyle(document.querySelector('aside.panel')).display === 'none';
+  btn.click();
+  await w(600);
+  return JSON.stringify({ panelHidden: hidden, chartGrew: after > before, gainedPx: after - before });
+})()`));
+
+console.log("8. NO CRASH AFTER ALL OF THAT:", await evalJs(`JSON.stringify({
   rendererAlive: (document.getElementById('root')?.children.length ?? 0) > 0,
   hasChart: !!document.querySelector('.chart-host'),
   status: (document.querySelector('.status')?.textContent ?? '').slice(0, 70),
