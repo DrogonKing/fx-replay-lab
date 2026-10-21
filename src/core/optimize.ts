@@ -281,7 +281,11 @@ export function walkForward(
         testStats: testRun.stats,
       });
     }
-    pos = trainEnd;      // roll forward by the train size (no overlap in test)
+    // Advance past BOTH segments. Stepping forward by only `trainBars` makes the test segment of
+    // this window become the TRAIN segment of the next one, so every out-of-sample bar is later
+    // used for fitting — which quietly turns a walk-forward into an in-sample optimisation and
+    // makes `combinedTest` dishonest.
+    pos = testEnd;
   }
 
   // Combine out-of-sample results by summing trades into one pseudo-set.
@@ -306,6 +310,10 @@ function combineStats(all: BacktestStats[]): BacktestStats {
   const grossLoss = usable.reduce((a, s) => a + s.grossLoss, 0);
   const weightedWinRate =
     usable.reduce((a, s) => a + s.winRate * s.tradeCount, 0) / totalTrades;
+  // NOTE: this is the WORST single window, not the drawdown of the stitched sequence. Windows are
+  // independent runs on disjoint data, so a genuine peak-to-trough across a boundary cannot be
+  // recovered from per-window maxima — the stitched figure would be at least this large. The
+  // field is documented as a floor so a caller does not present it as exact.
   const maxDd = Math.max(...usable.map((s) => s.maxDrawdown));
   const maxDdPct = Math.max(...usable.map((s) => s.maxDrawdownPct));
   const monthly: Record<string, number> = {};

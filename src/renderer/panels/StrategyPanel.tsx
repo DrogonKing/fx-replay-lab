@@ -8,6 +8,7 @@
  * are only rendered.
  */
 import React, { useState } from "react";
+import { useI18n } from "../i18n-context.js";
 import type { BacktestResult } from "../../core/backtest.js";
 import type {
   OptimizationResult, WalkForwardResult, MonteCarloResult,
@@ -88,6 +89,7 @@ interface Props {
 type Tab = "backtest" | "optimize" | "walkforward" | "montecarlo" | "pine";
 
 export function StrategyPanel({ series, account, symbolId }: Props): JSX.Element {
+  const { t } = useI18n();
   const [tab, setTab] = useState<Tab>("backtest");
   const [code, setCode] = useState(DEFAULT_STRATEGY);
   const [pineCode, setPineCode] = useState(DEFAULT_PINE);
@@ -107,6 +109,31 @@ export function StrategyPanel({ series, account, symbolId }: Props): JSX.Element
    * unactionable.
    */
   const [params, setParams] = useState<Record<string, number>>({});
+
+  /**
+   * Walk-forward window sizes.
+   *
+   * Defaults are a compromise: with fewer than about three windows a walk-forward cannot say
+   * anything (one lucky or unlucky segment looks like a result), so the train size starts at a
+   * quarter of the series and the test at an eighth, which gives roughly four windows on typical
+   * data. The user can change both.
+   */
+  const [wfTrain, setWfTrain] = useState(() => Math.max(200, Math.floor(0 / 4)));
+  const [wfTest, setWfTest] = useState(() => Math.max(100, Math.floor(0 / 8)));
+  const [wfAxis, setWfAxis] = useState<{ name: string; from: number; to: number; step: number }>(
+    { name: "fast", from: 5, to: 20, step: 5 },
+  );
+  const [wfReady, setWfReady] = useState(false);
+
+  // Seed the sizes from the loaded series the first time data arrives, so the fields start at
+  // something sensible instead of zero.
+  React.useEffect(() => {
+    if (wfReady || series.length === 0) return;
+    setWfTrain(Math.max(200, Math.floor(series.length / 4 / 100) * 100));
+    setWfTest(Math.max(100, Math.floor(series.length / 8 / 50) * 50));
+    setWfReady(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [series.length]);
 
   const req = (): unknown => ({
     series: payload(series),
@@ -160,13 +187,19 @@ export function StrategyPanel({ series, account, symbolId }: Props): JSX.Element
     if (!api) return;
     setBusy(true);
     try {
-      const train = Math.max(200, Math.floor(series.length / 4));
-      const test = Math.max(100, Math.floor(series.length / 8));
-      const r = (await api.walkForward(
-        req(), [{ name: "fast", from: 5, to: 13, step: 4 }], train, test,
-      )) as WalkForwardResult;
+      // explicit sizes, not fractions of the data: a user who is told "train 2000 bars" can reason
+      // about whether that is enough for their timeframe, and cannot reason about "length/4".
+      const train = Math.max(100, Math.floor(wfTrain / 100) * 100);
+      const test = Math.max(50, Math.floor(wfTest / 50) * 50);
+      if (train + test > series.length) {
+        setMsg(t("wf.tooLong").replace("{n}", String(series.length)));
+        return;
+      }
+      const r = (await api.walkForward(req(), [wfAxis], train, test)) as WalkForwardResult;
       setWf(r);
-      setMsg(`${r.windows.length} windows; out-of-sample net ${r.combinedTest.netProfit.toFixed(2)}`);
+      setMsg(t("wf.done")
+        .replace("{w}", String(r.windows.length))
+        .replace("{net}", r.combinedTest.netProfit.toFixed(2)));
     } catch (e) {
       setMsg(`error: ${(e as Error).message}`);
     } finally {
@@ -214,6 +247,50 @@ export function StrategyPanel({ series, account, symbolId }: Props): JSX.Element
             onChange={(e) => setCode(e.target.value)}
             spellCheck={false}
           />
+          {tab === "walkforward" && (
+            <div className="row" data-note="wf-controls">
+              <label>
+                {t("wf.trainBars")}{" "}
+                <input
+                  type="number" data-field="wf-train" className="w-20"
+                  min={100} step={100} value={wfTrain}
+                  onChange={(e) => setWfTrain(Number(e.target.value))}
+                />
+              </label>
+              <label>
+                {t("wf.testBars")}{" "}
+                <input
+                  type="number" data-field="wf-test" className="w-20"
+                  min={50} step={50} value={wfTest}
+                  onChange={(e) => setWfTest(Number(e.target.value))}
+                />
+              </label>
+              <label>
+                {t("wf.axis")}{" "}
+                <select
+                  data-field="wf-axis"
+                  value={wfAxis.name}
+                  onChange={(e) => setWfAxis({ ...wfAxis, name: e.target.value })}
+                >
+                  <option value="fast">fast</option>
+                  <option value="slow">slow</option>
+                </select>
+              </label>
+              {(() => {
+                const windows = Math.max(0, Math.floor(series.length / Math.max(1, wfTrain + wfTest)));
+                // the count is shown in the colour of what it means: fewer than three windows is
+                // not a small result, it is no result
+                const cls = windows < 3 ? "msg down" : "msg";
+                return (
+                  <span className={cls} data-field="wf-estimate" data-few={windows < 3 ? "yes" : "no"}>
+                    {windows < 3
+                      ? t("wf.tooFewShort").replace("{w}", String(windows))
+                      : t("wf.estimate").replace("{w}", String(windows))}
+                  </span>
+                );
+              })()}
+            </div>
+          )}
           <div className="row">
             {tab === "backtest" && (
               <button onClick={() => void doBacktest()} disabled={busy}>▶ Run</button>
@@ -222,7 +299,9 @@ export function StrategyPanel({ series, account, symbolId }: Props): JSX.Element
               <button onClick={() => void doOptimize()} disabled={busy}>⚙ Optimize</button>
             )}
             {tab === "walkforward" && (
-              <button onClick={() => void doWalkForward()} disabled={busy}>↻ Walk-forward</button>
+              <button data-action="wf-run" onClick={() => void doWalkForward()} disabled={busy}>
+                ⟳ {t("wf.run")}
+              </button>
             )}
             <span className="msg">{busy ? "working…" : msg}</span>
           </div>
@@ -292,22 +371,88 @@ export function StrategyPanel({ series, account, symbolId }: Props): JSX.Element
       )}
 
       {tab === "walkforward" && wf && (
-        <div className="scroll">
-          <div className="kv"><span>windows</span><b>{wf.windows.length}</b></div>
-          <div className="kv"><span>OOS net</span><b>{wf.combinedTest.netProfit.toFixed(2)}</b></div>
+        <div className="scroll" data-panel="walkforward">
+          <div className="kv"><span>windows</span><b data-field="wf-windows">{wf.windows.length}</b></div>
+          <div className="kv">
+            <span>OOS net</span>
+            <b data-field="wf-oos-net" className={wf.combinedTest.netProfit >= 0 ? "up" : "down"}>
+              {wf.combinedTest.netProfit.toFixed(2)}
+            </b>
+          </div>
           <div className="kv"><span>OOS trades</span><b>{wf.combinedTest.tradeCount}</b></div>
+          <div className="kv">
+            <span>OOS win rate</span><b>{wf.combinedTest.winRate.toFixed(1)}%</b>
+          </div>
+
+          {/*
+            The verdict is the point. A table of numbers with no conclusion leaves the user to
+            interpret it, and that is exactly where curve fitting gets believed: a profitable
+            training column next to a losing test column looks like bad luck rather than a
+            warning. Counting how many windows held up says it plainly.
+          */}
+          {(() => {
+            const n = wf.windows.length;
+            const trainUp = wf.windows.filter((w) => w.trainStats.netProfit > 0).length;
+            const testUp = wf.windows.filter((w) => w.testStats.netProfit > 0).length;
+            let verdict: string;
+            let kind: "up" | "down" | "";
+            if (n === 0) {
+              verdict = t("wf.noWindows");
+              kind = "";
+            } else if (n < 3) {
+              // With one or two windows there is no way to tell a result from luck, so claiming
+              // "curve fitting" or "consistent" would be overclaiming from a sample of one.
+              verdict = t("wf.tooFew");
+              kind = "";
+            } else if (trainUp > 0 && testUp === 0) {
+              verdict = t("wf.curveFit");
+              kind = "down";
+            } else if (testUp === n) {
+              verdict = t("wf.consistent");
+              kind = "up";
+            } else if (testUp <= Math.floor(n / 2)) {
+              verdict = t("wf.weak");
+              kind = "down";
+            } else {
+              verdict = t("wf.mixed");
+              kind = "";
+            }
+            return (
+              <p className={`msg ${kind}`} data-note="wf-verdict" data-kind={kind || "neutral"}>
+                {verdict}
+                {" "}
+                <span data-field="wf-counts">
+                  ({t("wf.trainUp")} {trainUp}/{n}, {t("wf.testUp")} {testUp}/{n})
+                </span>
+              </p>
+            );
+          })()}
+
           <table className="grid">
-            <thead><tr><th>train net</th><th>test net</th><th>params</th></tr></thead>
+            <thead><tr><th>{t("wf.train")}</th><th>{t("wf.test")}</th><th>{t("wf.params")}</th></tr></thead>
             <tbody>
-              {wf.windows.map((w, i) => (
-                <tr key={i}>
-                  <td>{w.trainStats.netProfit.toFixed(0)}</td>
-                  <td className={w.testStats.netProfit >= 0 ? "up" : "down"}>{w.testStats.netProfit.toFixed(0)}</td>
-                  <td>{Object.entries(w.bestParams).map(([k, v]) => `${k}=${v}`).join(" ")}</td>
-                </tr>
-              ))}
+              {wf.windows.map((w, i) => {
+                // A window whose train result was positive and whose test result was negative is
+                // the single most informative row, so it is marked rather than left to the eye.
+                const flipped = w.trainStats.netProfit > 0 && w.testStats.netProfit < 0;
+                return (
+                  <tr key={i} data-window={i} data-flipped={flipped ? "yes" : "no"}>
+                    <td className={w.trainStats.netProfit >= 0 ? "up" : "down"}>
+                      {w.trainStats.netProfit.toFixed(0)}
+                    </td>
+                    <td className={w.testStats.netProfit >= 0 ? "up" : "down"}>
+                      {w.testStats.netProfit.toFixed(0)}
+                    </td>
+                    <td>
+                      {Object.entries(w.bestParams).map(([k, v]) => `${k}=${v}`).join(" ")}
+                      {flipped && <b className="down" title={t("wf.flippedHint")}> ⚠</b>}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
+          <p className="msg" data-note="wf-foot">{t("wf.foot")}</p>
         </div>
       )}
 
