@@ -182,6 +182,29 @@ function makePriceSeries(
   ]);
   const [status, setStatus] = useState<string>("");
   const [rail, setRail] = useState<RailTab>("data");
+
+  /**
+   * Whether the right-hand panel is showing.
+   *
+   * A charting workspace needs the full width sometimes, and there was no way to get it: the
+   * panel was always rendered and always occupied 280px. Remembered across launches, because a
+   * user who prefers chart-only should not have to close it on every start.
+   */
+  const [panelOpen, setPanelOpen] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem("fxlab.panelOpen") !== "0";
+    } catch {
+      return true;
+    }
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem("fxlab.panelOpen", panelOpen ? "1" : "0");
+    } catch {
+      // storage can be unavailable; the toggle still works for this session
+    }
+  }, [panelOpen]);
   const { lang, setLang, t } = useI18n();
 
   /** One-line note about the restored (or refused) session, shown under the chart. */
@@ -326,6 +349,32 @@ function makePriceSeries(
   }, [base, revealed, tf]);
 
   // ---------------------------------------------------------- chart setup
+  /*
+    Keyed on the host APPEARING, not on the first render.
+
+    This effect used to have `[]` as its dependency list, so it ran once — while the start screen
+    was showing, where `.chart-host` does not exist. `chartHost.current` was null, the effect
+    returned immediately, and it never ran again when the chart host mounted after the user chose a
+    mode. The div stayed empty: measured `childCount: 0` and `canvasCount: 0` in `.chart-host`
+    while the legend showed live OHLC, so the app was fetching bars and painting nothing.
+
+    `chartReady` is set by the host's ref callback below, which fires when the node attaches.
+  */
+  const [chartReady, setChartReady] = useState(0);
+  /**
+   * A STABLE callback ref.
+   *
+   * An inline `ref={(el) => ...}` is a new function on every render, so React detaches and
+   * re-attaches it every time — and setting state inside it produced a re-render, a new callback,
+   * and another setState. That is React error #185, "Maximum update depth exceeded": the chart
+   * never mounted at all. `useCallback` with an empty dep list keeps the identity fixed, and the
+   * state is only bumped when the node actually changes.
+   */
+  const setChartHost = useCallback((el: HTMLDivElement | null) => {
+    if (chartHost.current === el) return;
+    chartHost.current = el;
+    if (el) setChartReady((n) => n + 1);
+  }, []);
   useEffect(() => {
     if (!chartHost.current) return;
     const chart = createChart(chartHost.current, {
@@ -379,7 +428,7 @@ function makePriceSeries(
       chartRef.current = null;
       lineRefs.current.clear();
     };
-  }, []);
+  }, [chartReady]);
 
   // ----------------------------------------------------------- data feed
   useEffect(() => {
@@ -457,6 +506,10 @@ function makePriceSeries(
         setTool(null);
         interRef.current = onCancel(interRef.current, drawingsRef.current.get()).state;
         overlayRef.current?.invalidate();
+      } else if (e.code === "F2") {
+        // TradingView's shortcut for hiding the side panel, so it is where the hand expects it
+        e.preventDefault();
+        setPanelOpen((v) => !v);
       } else if ((e.ctrlKey || e.metaKey) && e.code === "KeyZ") {
         e.preventDefault();
         if (e.shiftKey) {
@@ -1468,6 +1521,21 @@ function makePriceSeries(
 
         <div className="grow" />
 
+        {/*
+          Panel toggle. The panel was permanently on screen with no way to close it, so a user who
+          wants the full chart width had none. F2 is the shortcut TradingView uses for the same
+          action, and it is advertised in the title so it can be discovered.
+        */}
+        <button
+          className={panelOpen ? "panel-toggle on" : "panel-toggle"}
+          data-action="panel-toggle"
+          aria-pressed={panelOpen}
+          title={t("app.panelToggle")}
+          onClick={() => setPanelOpen((v) => !v)}
+        >
+          {panelOpen ? "▤" : "▢"}
+        </button>
+
         {/* A readout, not a control: the tool is chosen in the rail. Showing the
             active tool name here removes any doubt about what a click will draw. */}
         {tool && <span className="active-tool">{TOOL_LABELS[tool] ?? tool}</span>}
@@ -1520,7 +1588,7 @@ function makePriceSeries(
         data-frame={tf.label}
         data-mode={sessionMode}
       >
-        <div ref={chartHost} className="chart-host" />
+        <div ref={setChartHost} className="chart-host" />
         <canvas
           ref={canvasRef}
           className="draw-canvas"
@@ -1544,7 +1612,7 @@ function makePriceSeries(
         {loading && <div className="loading">loading…</div>}
       </div>
 
-      <aside className="panel">
+      <aside className="panel" data-panel-open={panelOpen ? "yes" : "no"}>
         <nav className="rail-tabs">
           {(["data", "download", "broker", "trade", "news", "sessions", "equity", "indicators", "strategy", "journal", "symbols"] as RailTab[]).map((tabId) => (
             <button

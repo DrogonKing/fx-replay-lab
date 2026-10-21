@@ -27,7 +27,8 @@
  * Every entry is a tool that actually draws something. A button that silently does nothing is
  * worse than a missing button.
  */
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import type { DrawingKind } from "../core/drawings.js";
 import type { ToolConfig, ToolStyle } from "../core/tool-config.js";
 import { isVisible } from "../core/tool-config.js";
@@ -249,6 +250,30 @@ export function DrawingToolbar({
   const [openGroup, setOpenGroup] = useState<string | null>(null);
   const [showFavourites, setShowFavourites] = useState(false);
 
+  /**
+   * Screen coordinates for the open group's flyout.
+   *
+   * The flyout is portalled onto <body>, so `position: fixed` needs real numbers. It is anchored
+   * to the RIGHT edge of the 44px rail and clamped to the viewport, because a menu that runs off
+   * the bottom of a short window is the same bug in a different direction.
+   */
+  const [flyoutPos, setFlyoutPos] = useState<{ left: number; top: number } | null>(null);
+
+  useEffect(() => {
+    if (openGroup === null) { setFlyoutPos(null); return; }
+    const place = (): void => {
+      const btn = document.querySelector<HTMLElement>(`[data-group="${CSS.escape(openGroup)}"]`);
+      if (!btn) return;
+      const r = btn.getBoundingClientRect();
+      const menuH = 380;
+      const top = Math.max(44, Math.min(r.top, window.innerHeight - Math.min(menuH, window.innerHeight - 50)));
+      setFlyoutPos({ left: r.right + 4, top });
+    };
+    place();
+    window.addEventListener("resize", place);
+    return () => window.removeEventListener("resize", place);
+  }, [openGroup]);
+
   /** A tiny swatch of the tool's own colour, so the rail reflects customisation. */
   const swatch = (kind: DrawingKind): React.CSSProperties => {
     const st: ToolStyle | undefined = configs[kind]?.style;
@@ -299,7 +324,20 @@ export function DrawingToolbar({
             </button>
 
             {openGroup === group.name && (
-              <div className="tool-flyout">
+              /*
+                Rendered into a portal on <body>, NOT inside the rail.
+                The rail scrolls (`overflow-y: auto`) to fit a short window, and CSS coerces the
+                other axis to `auto` as well — so a flyout inside it was clipped to the rail's 44px
+                width and painted under the chart, and a real mouse click at the item's centre hit
+                "draw-canvas" while a synthesised .click() still worked. A portal leaves that
+                stacking context and clipping entirely.
+              */
+              createPortal(
+              <div
+                className="tool-flyout"
+                style={flyoutPos ? { left: `${flyoutPos.left}px`, top: `${flyoutPos.top}px` } : { visibility: "hidden" }}
+                data-flyout-group={group.name}
+              >
                 <div className="flyout-title">{group.name}</div>
                 {visibleTools.map((t) => (
                   <div className="flyout-row" key={`${t.kind}-${t.label}`}>
@@ -335,7 +373,9 @@ export function DrawingToolbar({
                     </button>
                   </div>
                 ))}
-              </div>
+              </div>,
+              document.body,
+              )
             )}
           </div>
         );

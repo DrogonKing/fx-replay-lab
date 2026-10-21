@@ -6,6 +6,21 @@
   grid-template-areas: "toolbar toolbar toolbar" "rail chart panel";
 }
 
+/*
+  Panel hidden: the third column collapses to zero and its area disappears.
+  This lives here rather than in styles.css because this file is imported last and re-declares
+  `grid-template-columns`; a rule in the earlier file would be overridden. `:has()` keys off the
+  aside's own attribute, so the JSX does not need a second class on the root.
+*/
+.app:has(> .panel[data-panel-open="no"]) {
+  grid-template-columns: 44px 1fr 0;
+  grid-template-areas: "toolbar toolbar toolbar" "rail chart chart";
+}
+
+.app > .panel[data-panel-open="no"] {
+  display: none;
+}
+
 .draw-rail {
   grid-area: rail;
   background: #1a1e29;
@@ -15,10 +30,18 @@
   align-items: center;
   gap: 2px;
   padding: 6px 0;
+  /*
+    Vertical scrolling is needed on a short window, but `overflow-y: auto` also CLIPS children and
+    creates a stacking context — so the flyout's own z-index was trapped inside this 44px column
+    and could not paint above the chart. Measured: elementFromPoint at the submenu item's centre
+    returned "draw-canvas", so a real mouse click never reached the tool.
+    `z-index: 30` puts the whole rail (and everything it paints) above the chart host, which sits
+    at z-index 2.
+  */
   overflow-y: auto;
   overflow-x: visible;
   position: relative;
-  z-index: 5;
+  z-index: 30;
 }
 
 .tool-btn {
@@ -54,7 +77,8 @@
   border-radius: 6px;
   padding: 5px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.55);
-  z-index: 50;
+  /* above the rail's own z-index 30 and above the chart host's 2 */
+  z-index: 60;
   max-height: 380px;
   overflow-y: auto;
 }

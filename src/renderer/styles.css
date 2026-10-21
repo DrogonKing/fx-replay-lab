@@ -34,6 +34,21 @@ html, body, #root {
 }
 
 .brand { color: #f0b90b; letter-spacing: 0.5px; }
+
+.panel-toggle {
+  background: #2a2e39;
+  border: 1px solid #363a45;
+  color: #787b86;
+  border-radius: 4px;
+  padding: 3px 7px;
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.panel-toggle:hover { background: #363a45; color: #d1d4dc; }
+.panel-toggle.on { color: #2962ff; border-color: #2962ff; }
 .grow { flex: 1; }
 
 .toolbar label {
@@ -148,6 +163,24 @@ html, body, #root {
 
 .tz { position: relative; }
 
+/*
+  The drawing rail and its flyout menus must paint ABOVE the chart.
+  The chart host is `position: absolute; inset: 0`, so it覆盖s the whole chart cell — and without a
+  z-index the rail's submenus ended up underneath it. Measured: after opening a group,
+  elementFromPoint at the item's centre returned "draw-canvas", so a real mouse click selected the
+  chart, not the tool. A synthesised .click() bypassed hit-testing, which is why a DOM-only test
+  would have reported the tools as working.
+*/
+.draw-rail {
+  position: relative;
+  z-index: 40;
+}
+
+.draw-rail .tool-flyout,
+.draw-rail [data-flyout] {
+  z-index: 45;
+}
+
 .tz-button {
   background: #2a2e39;
   border: 1px solid #363a45;
@@ -165,11 +198,17 @@ html, body, #root {
 
 .tz-caret { color: #787b86; font-size: 10px; }
 
+/*
+  Positioned FIXED, not absolute.
+  The toolbar that contains this button sets `overflow-x: auto` so it can scroll, and that both
+  clips descendants and creates a stacking context. An absolutely-positioned 378px menu was
+  therefore cut to the toolbar's 44px height and painted over the chart starting at viewport y=0 —
+  measured, not guessed: elementFromPoint inside the dialog returned the chart canvas.
+  Fixed positioning is anchored by JS to the button's rect, so no ancestor overflow can clip it.
+*/
 .tz-dialog {
-  position: absolute;
-  top: calc(100% + 6px);
-  left: 0;
-  z-index: 60;
+  position: fixed;
+  z-index: 200;
   width: 268px;
   background: #1e222d;
   border: 1px solid #363a45;

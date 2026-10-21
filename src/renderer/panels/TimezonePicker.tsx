@@ -32,6 +32,7 @@ export function TimezonePicker({
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(0);
   const boxRef = useRef<HTMLDivElement | null>(null);
+  const buttonRef = useRef<HTMLButtonElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
 
   // Recomputed when the reference moment changes, which is what makes DST period-correct.
@@ -70,6 +71,39 @@ export function TimezonePicker({
     setOpen(false);
   };
 
+  /**
+   * Screen position for the dialog.
+   *
+   * The dialog is `position: fixed` because its parent toolbar scrolls (`overflow-x: auto`), which
+   * clips absolutely-positioned children — a 378px menu was being cut to the toolbar's 44px and
+   * painted over the chart starting at y=0. Fixed positioning escapes that clip, but then the
+   * coordinates must be supplied: with none, the dialog renders at the viewport origin.
+   */
+  const [anchor, setAnchor] = useState<{ left: number; top: number } | null>(null);
+
+  useEffect(() => {
+    if (!open) { setAnchor(null); return; }
+    const measure = (): void => {
+      const el = buttonRef.current;
+      if (!el) return;
+      const r = el.getBoundingClientRect();
+      // the dialog is 268px wide and can be ~400px tall; keep it fully on screen
+      const width = 268;
+      const maxTop = window.innerHeight - 60;
+      setAnchor({
+        left: Math.max(4, Math.min(r.left, window.innerWidth - width - 8)),
+        top: Math.min(r.bottom + 6, maxTop),
+      });
+    };
+    measure();
+    window.addEventListener("resize", measure);
+    window.addEventListener("scroll", measure, true);
+    return () => {
+      window.removeEventListener("resize", measure);
+      window.removeEventListener("scroll", measure, true);
+    };
+  }, [open]);
+
   const onKeyDown = (e: React.KeyboardEvent): void => {
     if (e.key === "Escape") { setOpen(false); return; }
     if (e.key === "ArrowDown") {
@@ -92,6 +126,7 @@ export function TimezonePicker({
   return (
     <div className="tz" ref={boxRef} data-panel="timezone">
       <button
+        ref={buttonRef}
         className="tz-button"
         data-action="tz-open"
         aria-haspopup="listbox"
@@ -108,7 +143,12 @@ export function TimezonePicker({
       </button>
 
       {open && (
-        <div className="tz-dialog" role="dialog" data-dialog="timezone">
+        <div
+          className="tz-dialog"
+          role="dialog"
+          data-dialog="timezone"
+          style={anchor ? { left: `${anchor.left}px`, top: `${anchor.top}px` } : { visibility: "hidden" }}
+        >
           <input
             ref={inputRef}
             className="tz-search"
