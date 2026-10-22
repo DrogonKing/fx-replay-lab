@@ -48,6 +48,19 @@ interface BrokerApi {
   bridgeLogin?: (req: {
     url: string; login: string; password: string; server: string;
   }) => Promise<{ ok: boolean; account?: string; symbols?: number; error?: string }>;
+  /**
+   * One press: start the bundled bridge, then log in. The app owns the whole chain, so the user does
+   * not install Python or run a script.
+   */
+  bridgeConnect?: (req: {
+    login: string; password: string; server: string; url?: string;
+  }) => Promise<{
+    ok: boolean; account?: string; symbols?: number;
+    error?: string; stage?: "start" | "login" | "done"; steps?: string[];
+  }>;
+  bridgeAvailability?: () => Promise<{
+    available: boolean; reason: string | null; running: boolean; port: number; platform: string;
+  }>;
   fetchOandaCandles?: (req: {
     token: string; accountId: string; symbol: string; intervalMinutes: number;
     from: number; to: number; price: "bid" | "ask" | "mid"; practice: boolean;
@@ -95,6 +108,77 @@ export function BrokerPanel({ onLoad, onStatus }: BrokerPanelProps): JSX.Element
   const [mtServer, setMtServer] = useState("");
   const [loginState, setLoginState] = useState<"idle" | "busy" | "ok" | "fail">("idle");
   const [loginDetail, setLoginDetail] = useState("");
+
+  /**
+   * The one-press connect flow.
+   *
+   * `steps` is not decoration: when the chain fails, the useful fact is WHICH step failed — starting
+   * the bundled Python, or the broker refusing the credentials. Reporting "connection failed" for
+   * both is what made the previous version unhelpful.
+   */
+  const [connectState, setConnectState] = useState<"idle" | "busy" | "ok" | "fail">("idle");
+  const [connectDetail, setConnectDetail] = useState("");
+  const [connectSteps, setConnectSteps] = useState<string[]>([]);
+  const [availability, setAvailability] = useState<{
+    available: boolean; reason: string | null; running: boolean; port: number; platform: string;
+  } | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    void (async () => {
+      try {
+        const fn = api().bridgeAvailability;
+        if (!fn) return;
+        const a = await fn();
+        if (alive) setAvailability(a);
+      } catch {
+        // an older main process without this IPC: leave the panel in manual mode
+      }
+    })();
+    return () => { alive = false; };
+  }, []);
+
+  const doConnect = useCallback(async (): Promise<void> => {
+    if (!mtLogin.trim() || !mtPassword || !mtServer.trim()) {
+      setConnectState("fail");
+      setConnectDetail(t("br.connectNeedAll"));
+      return;
+    }
+    setConnectState("busy");
+    setConnectDetail("");
+    setConnectSteps([]);
+    try {
+      const connect = api().bridgeConnect;
+      if (!connect) {
+        setConnectState("fail");
+        setConnectDetail(t("br.connectUnsupported"));
+        return;
+      }
+      const r = await connect({
+        login: mtLogin.trim(),
+        password: mtPassword,
+        server: mtServer.trim(),
+      });
+      setConnectSteps(r.steps ?? []);
+      if (r.ok) {
+        setConnectState("ok");
+        setConnectDetail(`${t("br.connected")} — ${r.account ?? mtServer}`);
+        // the password has done its job; do not keep it in the field
+        setMtPassword("");
+        setLoginState("ok");
+        setLoginDetail(r.account ?? "");
+        setBridgeState("ok");
+        const probe = await api().testBridge?.(bridgeUrl);
+        if (probe?.ok && probe.symbols) setSymbols(probe.symbols);
+      } else {
+        setConnectState("fail");
+        setConnectDetail(r.error ?? t("br.connectFailed"));
+      }
+    } catch (e) {
+      setConnectState("fail");
+      setConnectDetail((e as Error).message);
+    }
+  }, [mtLogin, mtPassword, mtServer, bridgeUrl, t]);
   const [bridgeState, setBridgeState] = useState<"idle" | "testing" | "ok" | "fail">("idle");
   const [bridgeDetail, setBridgeDetail] = useState("");
   const [symbols, setSymbols] = useState<string[]>([]);
@@ -192,12 +276,20 @@ export function BrokerPanel({ onLoad, onStatus }: BrokerPanelProps): JSX.Element
     }
   }, [bridgeUrl, mtLogin, mtPassword, mtServer, onStatus, t, testBridge]);
 
-  // Auto-probe once on mount: a user who already started the bridge should not have to press a
-  // button to find out it is there.
+  /*
+    Auto-probe once on mount, but ONLY when the bridge can actually run here.
+
+    Probing an unavailable runtime can only produce a failure, and that failure's text ("start it
+    with python …") contradicts the note above it saying the bridge is built in. Two messages
+    disagreeing is worse than one; when the runtime is unavailable, the availability note is the
+    whole story.
+  */
   useEffect(() => {
-    if (adapterId === "mt5") void testBridge();
+    if (adapterId !== "mt5") return;
+    if (availability && !availability.available) return;
+    void testBridge();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [adapterId]);
+  }, [adapterId, availability?.available]);
 
   const load = async (): Promise<void> => {
     const a = api();
@@ -351,26 +443,24 @@ export function BrokerPanel({ onLoad, onStatus }: BrokerPanelProps): JSX.Element
               {`${t("br.loggedIn")} — ${loginDetail}`}
             </p>
           )}
-          <div className="br-login" data-note="br-login-block" data-collapsed={bridgeState === "ok" ? "yes" : "no"}>
-            {bridgeState === "ok" && <p className="msg">{t("br.loginSwitch")}</p>}
-            {bridgeState !== "ok" && <p className="msg">{t("br.loginHint")}</p>}
-
+          <div className="br-login" data-note="br-login-block">
             {/*
-              The prerequisite, said plainly and near the button.
-              The bridge is a separate Python process the user starts on their own machine; the app
-              cannot start it, and this panel used to say nothing about it. A working Log in button
-              with no bridge behind it therefore read as a broken button.
+              One button, and the app does the rest: it starts the bundled Python bridge, logs the
+              terminal in, and says which step failed. The old version told the user to install
+              Python and run a script themselves, which is the app delegating its own setup.
             */}
-            <div className="br-howto" data-note="br-bridge-howto">
-              <b>{t("br.howtoTitle")}</b>
-              <ol>
-                <li>{t("br.howto1")}</li>
-                <li>{t("br.howto2")}</li>
-                <li>{t("br.howto3")}</li>
-              </ol>
-              <code>python bridge/mt5-bridge.py</code>
-              <span className="br-howto-note">{t("br.howtoNote")}</span>
-            </div>
+            {availability && !availability.available && (
+              <p className="msg down" data-note="br-unavailable">
+                {availability.reason}
+              </p>
+            )}
+
+            {availability?.available && (
+              <p className="msg" data-note="br-runtime">
+                {t("br.runtimeBundled").replace("{port}", String(availability.port))}
+              </p>
+            )}
+
             <label className="field">
               {t("br.login")}
               <input
@@ -401,18 +491,34 @@ export function BrokerPanel({ onLoad, onStatus }: BrokerPanelProps): JSX.Element
                 placeholder="ICMarkets-Demo"
               />
             </label>
+
             <button
-              data-action="br-login"
-              disabled={loginState === "busy"}
-              onClick={() => void doLogin()}
+              className="primary"
+              data-action="br-connect"
+              data-state={connectState}
+              disabled={connectState === "busy" || !availability?.available}
+              onClick={() => void doConnect()}
             >
-              {loginState === "busy" ? t("br.loggingIn") : t("br.loginGo")}
+              {connectState === "busy" ? t("br.connecting") : t("br.connect")}
             </button>
-            {loginState === "fail" && (
-              <p className="msg down" data-note="br-login-verdict" data-verdict="fail">
-                {loginDetail}
+
+            {connectState === "fail" && (
+              <p className="msg down" data-note="br-connect-verdict" data-verdict="fail">
+                {connectDetail}
               </p>
             )}
+            {connectState === "ok" && (
+              <p className="msg up" data-note="br-connect-verdict" data-verdict="ok">
+                {connectDetail}
+              </p>
+            )}
+
+            {connectSteps.length > 0 && (
+              <ol className="br-steps" data-note="br-connect-steps">
+                {connectSteps.map((s) => <li key={s}>{s}</li>)}
+              </ol>
+            )}
+
             <p className="msg" data-note="br-login-security">{t("br.loginSecurity")}</p>
           </div>
 

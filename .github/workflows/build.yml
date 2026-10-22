@@ -80,6 +80,18 @@ jobs:
       - name: build
         run: npm run build
 
+      # The bridge runtime is gitignored (64MB of vendored interpreter), so it is fetched here.
+      # Without this the installer would silently ship without the bridge and Connect would fail on
+      # the user's machine, long after a green build.
+      - name: fetch the bundled Python runtime for the MetaTrader bridge
+        run: node scripts/fetch-python-runtime.mjs
+
+      - name: verify the runtime is present for packaging
+        run: |
+          test -f bridge/python/python.exe || { echo "no python.exe"; exit 1; }
+          test -f bridge/python/Lib/site-packages/MetaTrader5/__init__.py || { echo "no MetaTrader5"; exit 1; }
+          test -f bridge/python/Lib/site-packages/numpy/__init__.py || { echo "no numpy"; exit 1; }
+
       # better-sqlite3 is a native addon; electron-builder must not try to
       # rebuild it again with a mismatched toolchain on CI.
       - name: package (${{ matrix.target }})

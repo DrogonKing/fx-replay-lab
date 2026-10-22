@@ -26,3 +26,14 @@ Thumbs.db
 # Logs
 *.log
 npm-debug.log*
+
+# Vendored Python runtime for the in-app MetaTrader bridge.
+#
+# A build input, not source: 64MB of an embeddable interpreter plus wheels. It is fetched by
+# scripts/fetch-python-runtime.mjs during packaging, and CI runs that too, so the repo stays
+# cloneable and the artefact stays reproducible from a pinned version.
+bridge/python/
+
+# Downloaded BLE/data fixtures
+history/
+*.bi5

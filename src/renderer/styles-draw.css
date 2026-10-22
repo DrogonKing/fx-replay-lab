@@ -300,6 +300,34 @@
   display: block;
 }
 
+/*
+  Chart interaction vs drawing.
+
+  The overlay covers the whole chart, so with pointer-events:auto it consumed every wheel and drag
+  and Lightweight Charts never saw them — measured: elementFromPoint at the chart centre returned
+  "draw-canvas", and a real CDP wheel plus a real drag left the pixels unchanged. The chart could not
+  be zoomed or panned at all.
+
+  With no tool selected there is nothing for the overlay to capture, so it becomes click-through and
+  the chart gets native zoom/drag. As soon as a tool is picked, the overlay takes input again so
+  anchors land where the user clicks. The state is a single attribute on the chart area, set from
+  `tool` in App.tsx — no event forwarding, no duplicated hit-testing.
+*/
+.chart-area[data-tool-active="no"] .draw-canvas {
+  pointer-events: none;
+}
+
+.chart-area[data-tool-active="yes"] .draw-canvas {
+  pointer-events: auto;
+  cursor: crosshair;
+}
+
+/* While dragging a chart with no tool selected, the hand cursor is the standard affordance. */
+.chart-area[data-tool-active="no"] .draw-canvas,
+.chart-area[data-tool-active="no"] .chart-host {
+  cursor: grab;
+}
+
 /* Reports the active tool; looks like text on purpose so it is not mistaken for a
    control. The tool is chosen in the rail. */
 .active-tool {

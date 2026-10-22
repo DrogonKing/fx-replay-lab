@@ -20,6 +20,9 @@ import { decompressBi5, downloadRange, unzipCsv } from "./dukascopy-download.js"
 import { parseDukascopyDay } from "../core/importer.js";
 import { bridgeLogin, fetchBridgeCandles, fetchOandaCandles, testBridge } from "./broker-fetch.js";
 import {
+  resolveBridgePaths, startBridge, stopBridge, bridgeRunning, bridgePort, bridgeLog,
+} from "./bridge-process.js";
+import {
   handleBacktest, handleOptimize, handleWalkForward, handleMonteCarlo,
   handlePine, handlePineParse, type RunRequest,
 } from "./strategy-host.js";
@@ -214,6 +217,60 @@ app.whenReady().then(() => {
     } catch (err) {
       return { ok: false, error: (err as Error).message };
     }
+  });
+
+  /**
+   * One press, one connection: start the bundled bridge, then log in.
+   *
+   * This is the whole point of bundling Python. Asking a user to open a terminal, install packages
+   * and run a script before the Connect button works is not a feature — it is the app delegating its
+   * own setup. Here the app owns all of it, and reports the first step that failed.
+   */
+  ipcMain.handle("broker:connect", async (_e, req: {
+    login: string; password: string; server: string; url?: string;
+  }) => {
+    const steps: string[] = [];
+    try {
+      const started = await startBridge();
+      if (!started.ok) {
+        return { ok: false, stage: "start", error: started.error, steps };
+      }
+      steps.push("bridge started");
+
+      const url = req.url?.trim() || `http://127.0.0.1:${bridgePort()}`;
+      const res = await bridgeLogin({
+        url,
+        login: req.login,
+        password: req.password,
+        server: req.server,
+      });
+      steps.push(res.ok ? "logged in" : "login refused");
+      return { ...res, stage: res.ok ? "done" : "login", steps };
+    } catch (err) {
+      return { ok: false, stage: "login", error: (err as Error).message, steps };
+    }
+  });
+
+  /** Whether the bundled runtime can run here at all, and why not if it cannot. */
+  ipcMain.handle("broker:bridgeAvailability", () => {
+    const p = resolveBridgePaths();
+    return {
+      available: p.available,
+      reason: p.reason ?? null,
+      running: bridgeRunning(),
+      port: bridgePort(),
+      platform: process.platform,
+    };
+  });
+
+  /** Start or stop the bridge without logging in — used by the panel's own toggle. */
+  ipcMain.handle("broker:bridgeStart", async () => {
+    const r = await startBridge();
+    return { ...r, log: bridgeLog() };
+  });
+  ipcMain.handle("broker:bridgeStop", () => {
+    stopBridge();
+    return { ok: true };
   });
 
   /** Bars from a local MT5 bridge. Any broker's terminal works, because the bridge drives it. */

@@ -1600,6 +1600,7 @@ function makePriceSeries(
         data-base-bars={base.length}
         data-frame={tf.label}
         data-mode={sessionMode}
+        data-tool-active={tool === null ? "no" : "yes"}
       >
         <div ref={setChartHost} className="chart-host" />
         <canvas

@@ -106,6 +106,17 @@ input[type="checkbox"]:checked::after {
   border-color: var(--accent);
 }
 
+/* ---- the connect flow's step list: which stage failed, and which succeeded ---- */
+.br-steps {
+  margin: 6px 0 0;
+  padding-inline-start: 16px;
+  font-size: 10.5px;
+  line-height: 1.6;
+  color: var(--tx-2);
+}
+
+.br-steps li::marker { color: var(--accent); }
+
 /* ---- chart canvas matches the chrome instead of reading as a different product ----
    The pack sets the Lightweight Charts background in App.tsx to --bg-0's value; this keeps the
    host element itself in the same family so there is no seam during a resize. */

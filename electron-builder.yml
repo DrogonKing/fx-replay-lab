@@ -20,6 +20,18 @@ files:
 asarUnpack:
   - "**/node_modules/better-sqlite3/**"
 
+# The MetaTrader bridge and its Python runtime ship inside the installer, so the user installs
+# nothing extra: they type account, password and server, and press Connect. The app spawns the
+# interpreter itself. Windows-only in practice - MetaTrader5 publishes no other wheels - so other
+# platforms get the files but the panel reports the bridge as unavailable with the reason.
+extraResources:
+  - from: bridge
+    to: bridge
+    filter:
+      - "**/*"
+      - "!python/**/__pycache__/**"
+      - "!**/*.pyc"
+
 win:
   target:
     - target: nsis

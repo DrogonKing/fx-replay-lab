@@ -76,6 +76,26 @@ const api = {
   }> => ipcRenderer.invoke("data:pickFile"),
 
   /** Probe a local MT5 bridge: health, symbols, and one real bar. Read-only. */
+  /**
+   * One press: start the bundled bridge, then log in. Returns which stage failed so the panel can
+   * point at the right problem instead of a generic error.
+   */
+  bridgeConnect: (req: {
+    login: string; password: string; server: string; url?: string;
+  }): Promise<{
+    ok: boolean; account?: string; symbols?: number;
+    error?: string; stage?: "start" | "login" | "done"; steps?: string[];
+  }> => ipcRenderer.invoke("broker:connect", req),
+
+  bridgeAvailability: (): Promise<{
+    available: boolean; reason: string | null; running: boolean; port: number; platform: string;
+  }> => ipcRenderer.invoke("broker:bridgeAvailability"),
+
+  bridgeStart: (): Promise<{ ok: boolean; error?: string; log?: string }> =>
+    ipcRenderer.invoke("broker:bridgeStart"),
+
+  bridgeStop: (): Promise<{ ok: boolean }> => ipcRenderer.invoke("broker:bridgeStop"),
+
   testBridge: (url: string): Promise<{
     ok: boolean;
     health?: { ok?: boolean; connected?: boolean; symbols?: number };
