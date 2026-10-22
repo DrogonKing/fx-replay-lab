@@ -1,0 +1,178 @@
+/*
+ * Second pass on top of the redesign pack.
+ *
+ * Each rule here fixes something that was measured, not guessed:
+ *   - the tab strip reported contentWidth 746 in a 251px container with overflowX visible, so tabs
+ *     simply spilled out and the last ones were unreachable
+ *   - the two panel buttons computed to background rgb(239,239,239) / color black / 2px border:
+ *     browser defaults, the only light surfaces in the whole UI
+ *   - checkboxes computed to appearance:auto, so native bright-white squares in a dark theme
+ */
+
+/* ---- tab strip: wrap instead of spilling ---- */
+.rail-tabs {
+  flex-wrap: wrap;
+  overflow: visible;
+  row-gap: 4px;
+}
+
+.rail-tab {
+  flex: 0 0 auto;
+  font-size: 11px;
+  padding: 5px 7px;
+  white-space: nowrap;
+}
+
+/* ---- panel buttons: themed like every other control ---- */
+.panel button {
+  background: var(--bg-2);
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-sm);
+  color: var(--tx-1);
+  font-size: 12px;
+  padding: 5px 10px;
+  cursor: pointer;
+  transition: background var(--ease), border-color var(--ease), color var(--ease);
+}
+
+.panel button:hover:not(:disabled) {
+  background: var(--bg-3);
+  border-color: var(--accent);
+  color: var(--tx-0);
+}
+
+.panel button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* two buttons side by side should not have ragged edges */
+.panel .row > button,
+.panel button + button {
+  flex: 1 1 auto;
+}
+
+/* ---- checkboxes: one themed check, not the browser's white square ---- */
+input[type="checkbox"] {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 14px;
+  height: 14px;
+  border: 1px solid var(--line-2);
+  border-radius: 3px;
+  background: var(--bg-0);
+  cursor: pointer;
+  position: relative;
+  flex-shrink: 0;
+  vertical-align: middle;
+}
+
+input[type="checkbox"]:hover { border-color: var(--accent); }
+
+input[type="checkbox"]:checked {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+/* the tick, drawn rather than an image so it inherits the accent */
+input[type="checkbox"]:checked::after {
+  content: "";
+  position: absolute;
+  left: 3.5px;
+  top: 0.5px;
+  width: 4px;
+  height: 8px;
+  border: solid #fff;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+
+/* ---- form controls inside panels ---- */
+.panel select,
+.panel input[type="text"],
+.panel input[type="number"],
+.panel input[type="password"] {
+  background: var(--bg-0);
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-sm);
+  color: var(--tx-0);
+  font-size: 12px;
+  padding: 4px 7px;
+}
+
+.panel select:focus,
+.panel input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+/* ---- chart canvas matches the chrome instead of reading as a different product ----
+   The pack sets the Lightweight Charts background in App.tsx to --bg-0's value; this keeps the
+   host element itself in the same family so there is no seam during a resize. */
+.chart-host { background: var(--bg-0); }
+
+/* ---- readable meta text: the previous floor was ~3:1 on an 11px line ---- */
+.legend,
+.kv b { font-variant-numeric: tabular-nums; }
+
+[data-note="attribution"],
+.panel .msg,
+.panel .hint {
+  color: var(--tx-3);
+  font-size: 10.5px;
+  line-height: 1.5;
+}
+
+/* ---- sliders: the default track is invisible on this background ---- */
+.panel input[type="range"] {
+  appearance: none;
+  -webkit-appearance: none;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--bg-3);
+  cursor: pointer;
+}
+
+.panel input[type="range"]::-webkit-slider-thumb {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 2px solid var(--bg-1);
+  cursor: pointer;
+}
+
+/* ---- scrollbars: the OS default light bar was the brightest thing in the panel ---- */
+.panel,
+.rail-tabs,
+.tf-dialog,
+.tz-dialog,
+.tool-flyout {
+  scrollbar-width: thin;
+  scrollbar-color: var(--bg-3) transparent;
+}
+
+.panel::-webkit-scrollbar,
+.tf-dialog::-webkit-scrollbar,
+.tz-dialog::-webkit-scrollbar,
+.tool-flyout::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.panel::-webkit-scrollbar-thumb,
+.tf-dialog::-webkit-scrollbar-thumb,
+.tz-dialog::-webkit-scrollbar-thumb,
+.tool-flyout::-webkit-scrollbar-thumb {
+  background: var(--bg-3);
+  border-radius: 4px;
+}
+
+.panel::-webkit-scrollbar-track,
+.tf-dialog::-webkit-scrollbar-track,
+.tz-dialog::-webkit-scrollbar-track,
+.tool-flyout::-webkit-scrollbar-track {
+  background: transparent;
+}

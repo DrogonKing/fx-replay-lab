@@ -25,7 +25,7 @@ import { formatDateTime, formatOffset } from "../core/timezone.js";
 import { parseCsv } from "../core/csv.js";
 import { seriesFromCandles } from "../core/series.js";
 import {
-  canAggregate, detectTimeframe, explainUnavailable, framesAtOrAbove,
+  canAggregate, detectTimeframe, explainUnavailable,
 } from "../core/resolution.js";
 import {
   DrawingHistory, type Drawing, type DrawingKind,
@@ -78,6 +78,7 @@ import { DownloaderPanel } from "./panels/DownloaderPanel.js";
 import { BrokerPanel } from "./panels/BrokerPanel.js";
 import { TimezonePicker } from "./panels/TimezonePicker.js";
 import { createFeed, symbols as LIVE_SYMBOLS } from "./livefeed.js";
+import { findSymbol } from "../core/symbol.js";
 import type { Feed, FeedStatus } from "../core/feed.js";
 import type { Candle, CandleSeries, Timeframe } from "../core/types.js";
 import { auditCandles, describeSpacing, parseText } from "../core/importer.js";
@@ -128,23 +129,23 @@ function makePriceSeries(
 ): ISeriesApi<"Candlestick"> {
   if (kind === "bars") {
     return chart.addBarSeries({
-      upColor: "#26a69a", downColor: "#ef5350", thinBars: false,
+      upColor: "#22c58b", downColor: "#f2495e", thinBars: false,
     }) as unknown as ISeriesApi<"Candlestick">;
   }
   if (kind === "line") {
     return chart.addLineSeries({
-      color: "#26a69a", lineWidth: 2, priceLineVisible: false,
+      color: "#22c58b", lineWidth: 2, priceLineVisible: false,
     }) as unknown as ISeriesApi<"Candlestick">;
   }
   if (kind === "area") {
     return chart.addAreaSeries({
-      lineColor: "#26a69a", topColor: "rgba(38,166,154,0.28)",
+      lineColor: "#22c58b", topColor: "rgba(34,197,139,0.28)",
       bottomColor: "rgba(38,166,154,0.02)", lineWidth: 2,
     }) as unknown as ISeriesApi<"Candlestick">;
   }
   return chart.addCandlestickSeries({
-    upColor: "#26a69a", downColor: "#ef5350", borderVisible: false,
-    wickUpColor: "#26a69a", wickDownColor: "#ef5350",
+    upColor: "#22c58b", downColor: "#f2495e", borderVisible: false,
+    wickUpColor: "#22c58b", wickDownColor: "#f2495e",
   });
 }
 
@@ -173,7 +174,6 @@ function makePriceSeries(
    * frame, 5m data offers everything above 5m and refuses 1m, because a lower frame cannot be
    * invented from coarser bars.
    */
-  const availableFrames = useMemo(() => framesAtOrAbove(baseFrame), [baseFrame]);
   const [tf, setTf] = useState<Timeframe>(TIMEFRAMES[0]!);
   const [custom, setCustom] = useState("");
   const [zone, setZone] = useState<string>("UTC");
@@ -393,17 +393,17 @@ function makePriceSeries(
     if (!chartHost.current) return;
     const chart = createChart(chartHost.current, {
       layout: {
-        background: { color: "#131722" },
-        textColor: "#d1d4dc",
+        background: { color: "#0d1119" },
+        textColor: "#c3c9d6",
         attributionLogo: false,   // spec: no TradingView logos/assets
       },
       grid: {
-        vertLines: { color: "#1e222d" },
-        horzLines: { color: "#1e222d" },
+        vertLines: { color: "#151b27" },
+        horzLines: { color: "#151b27" },
       },
       crosshair: { mode: 0 },
-      rightPriceScale: { borderColor: "#2a2e39" },
-      timeScale: { borderColor: "#2a2e39", timeVisible: true, secondsVisible: false },
+      rightPriceScale: { borderColor: "#232b3b" },
+      timeScale: { borderColor: "#232b3b", timeVisible: true, secondsVisible: false },
       autoSize: true,
     });
     chartRef.current = chart;
@@ -415,9 +415,9 @@ function makePriceSeries(
       overlayRef.current = new DrawingOverlay(
         canvasRef.current, chart, candleRef.current,
         {
-          background: "#131722", grid: "#1e222d", text: "#d1d4dc",
-          crosshair: "#787b86", accent: "#f0b90b",
-          up: "#26a69a", down: "#ef5350",
+          background: "#0d1119", grid: "#151b27", text: "#c3c9d6",
+          crosshair: "#787b86", accent: "#5b8def",
+          up: "#22c58b", down: "#f2495e",
         },
       );
     }
@@ -1277,9 +1277,9 @@ function makePriceSeries(
     overlayRef.current = new DrawingOverlay(
       canvasRef.current, chart, series,
       {
-        background: "#131722", grid: "#1e222d", text: "#d1d4dc",
-        crosshair: "#787b86", accent: "#f0b90b",
-        up: "#26a69a", down: "#ef5350",
+        background: "#0d1119", grid: "#151b27", text: "#c3c9d6",
+        crosshair: "#787b86", accent: "#5b8def",
+        up: "#22c58b", down: "#f2495e",
       },
     );
     overlayRef.current.queue(
@@ -1296,7 +1296,7 @@ function makePriceSeries(
     chart.applyOptions({
       rightPriceScale: {
         mode: logScale ? 1 : 0,
-        borderColor: "#2a2e39",
+        borderColor: "#232b3b",
       },
     });
   }, [logScale]);
@@ -1514,7 +1514,11 @@ function makePriceSeries(
 
         <label>
           {t("app.language")}{" "}
-          <select value={lang} onChange={(e) => setLang(e.target.value as typeof lang)}>
+          <select
+            data-field="lang"
+            value={lang}
+            onChange={(e) => setLang(e.target.value as typeof lang)}
+          >
             {LOCALES.map((l) => (
               <option key={l.lang} value={l.lang}>{l.label}</option>
             ))}
@@ -1613,8 +1617,17 @@ function makePriceSeries(
           <span className="sep">·</span>
           <span className={lastBar && lastBar.close >= lastBar.open ? "up" : "down"}>
             {lastBar
-              ? `O ${lastBar.open.toFixed(2)}  H ${lastBar.high.toFixed(2)}  ` +
-                `L ${lastBar.low.toFixed(2)}  C ${lastBar.close.toFixed(2)}`
+              /*
+                Price precision follows the instrument.
+                `toFixed(2)` is right for gold and wrong for EUR/USD: at two decimals the whole
+                legend read "O 1.12 H 1.12 L 1.12 C 1.12" and the spread was invisible. Five
+                decimals for pairs quoted near 1, three for JPY crosses, two for metals and indices.
+              */
+              ? (() => {
+                  const p = findSymbol(symbolId).digits;
+                  return `O ${lastBar.open.toFixed(p)}  H ${lastBar.high.toFixed(p)}  ` +
+                    `L ${lastBar.low.toFixed(p)}  C ${lastBar.close.toFixed(p)}`;
+                })()
               : ""}
           </span>
         </div>

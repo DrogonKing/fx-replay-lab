@@ -1,0 +1,21 @@
+/* Design tokens. Change a value here and the whole app follows. */
+:root {
+  --bg-0: #0d1119;   /* chart + app canvas */
+  --bg-1: #131822;   /* toolbar, side panel, dialogs */
+  --bg-2: #1b2230;   /* controls */
+  --bg-3: #252d3f;   /* hover */
+  --line: #232b3b;   /* hairlines */
+  --line-2: #2f394e; /* control borders */
+  --tx-0: #e8ebf2;
+  --tx-1: #c3c9d6;
+  --tx-2: #8d96aa;
+  --tx-3: #586177;
+  --accent: #5b8def;
+  --up: #22c58b;
+  --dn: #f2495e;
+  --warn: #f0b90b;
+  --r-sm: 6px;
+  --r-md: 10px;
+  --shadow: 0 14px 36px rgba(0, 0, 0, 0.55);
+  --ease: 140ms cubic-bezier(0.2, 0, 0, 1);
+}

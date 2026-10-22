@@ -24,7 +24,7 @@
 .draw-rail {
   grid-area: rail;
   background: #1a1e29;
-  border-right: 1px solid #2a2e39;
+  border-right: 1px solid var(--line);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -50,7 +50,7 @@
   background: transparent;
   border: 1px solid transparent;
   border-radius: 4px;
-  color: #9aa0ac;
+  color: var(--tx-2);
   font-size: 15px;
   line-height: 1;
   cursor: pointer;
@@ -60,10 +60,10 @@
   flex: 0 0 auto;
 }
 
-.tool-btn:hover { background: #262b37; color: #d1d4dc; }
-.tool-btn.active { background: #2f3644; color: #f0b90b; border-color: #f0b90b66; }
+.tool-btn:hover { background: #262b37; color: var(--tx-0); }
+.tool-btn.active { background: var(--bg-2); color: var(--accent); border-color: rgba(240,185,11,0.40); }
 .tool-btn:disabled { opacity: 0.28; cursor: default; }
-.tool-btn:disabled:hover { background: transparent; color: #9aa0ac; }
+.tool-btn:disabled:hover { background: transparent; color: var(--tx-2); }
 
 .tool-group { position: relative; }
 
@@ -72,8 +72,8 @@
   left: 38px;
   top: 0;
   min-width: 210px;
-  background: #1e222d;
-  border: 1px solid #363a45;
+  background: var(--bg-1);
+  border: 1px solid var(--line-2);
   border-radius: 6px;
   padding: 5px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.55);
@@ -84,7 +84,7 @@
 }
 
 .flyout-title {
-  color: #787b86;
+  color: var(--tx-2);
   font-size: 10px;
   text-transform: uppercase;
   letter-spacing: 0.7px;
@@ -99,7 +99,7 @@
   background: transparent;
   border: none;
   border-radius: 4px;
-  color: #d1d4dc;
+  color: var(--tx-0);
   font: inherit;
   font-size: 12px;
   text-align: left;
@@ -107,11 +107,11 @@
   cursor: pointer;
 }
 
-.flyout-item:hover { background: #2a2e39; }
-.flyout-item.active { background: #2f3644; color: #f0b90b; }
-.fi-icon { width: 16px; text-align: center; color: #9aa0ac; }
+.flyout-item:hover { background: var(--bg-2); }
+.flyout-item.active { background: var(--bg-2); color: var(--accent); }
+.fi-icon { width: 16px; text-align: center; color: var(--tx-2); }
 
-/* Group dividers. Near-invisible at #2a2e39 on a #1a1e29 rail (1px, low
+/* Group dividers. Near-invisible at var(--bg-2) on a #1a1e29 rail (1px, low
    contrast) which made nine flyout groups read as one flat list. */
 /* A grouped button reads as "has more" only with this mark, the way TradingView's does. */
 .tool-chev {
@@ -125,7 +125,7 @@
   opacity: 0.6;
 }
 
-.tool-btn.on { background: #2f3644; color: #f0b90b; }
+.tool-btn.on { background: var(--bg-2); color: var(--accent); }
 
 .flyout-row { display: flex; align-items: center; gap: 2px; }
 .flyout-row .flyout-item { flex: 1; }
@@ -134,16 +134,16 @@
 .fi-gear {
   background: transparent;
   border: none;
-  color: #787b86;
+  color: var(--tx-2);
   cursor: pointer;
   font-size: 11px;
   padding: 2px 3px;
   border-radius: 3px;
 }
 .fi-star:hover,
-.fi-gear:hover { background: #2f3644; color: #f0b90b; }
+.fi-gear:hover { background: var(--bg-2); color: var(--accent); }
 
-.flyout-empty { color: #787b86; font-size: 11px; padding: 6px 8px; max-width: 190px; }
+.flyout-empty { color: var(--tx-2); font-size: 11px; padding: 6px 8px; max-width: 190px; }
 
 .rail-grow { flex: 1; }
 
@@ -152,7 +152,7 @@
 
 /* ================= per-tool settings ================= */
 .tool-settings {
-  border-top: 1px solid #2a2e39;
+  border-top: 1px solid var(--line);
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -161,10 +161,10 @@
 }
 
 .ts-head { display: flex; align-items: center; justify-content: space-between; }
-.ts-head b { color: #d1d4dc; font-size: 12px; }
+.ts-head b { color: var(--tx-0); font-size: 12px; }
 
 .tool-settings h4 {
-  color: #787b86;
+  color: var(--tx-2);
   font-size: 9px;
   font-weight: 600;
   letter-spacing: 0.7px;
@@ -175,7 +175,7 @@
 .ts-swatches { display: flex; flex-wrap: wrap; gap: 4px; }
 
 .ts-swatches .sw {
-  border: 1px solid #363a45;
+  border: 1px solid var(--line-2);
   border-radius: 3px;
   cursor: pointer;
   height: 18px;
@@ -190,8 +190,8 @@
 
 .ts-w {
   align-items: center;
-  background: #1e222d;
-  border: 1px solid #363a45;
+  background: var(--bg-1);
+  border: 1px solid var(--line-2);
   border-radius: 3px;
   cursor: pointer;
   display: flex;
@@ -206,8 +206,8 @@
 .ts-styles { display: flex; gap: 4px; }
 
 .ts-ls {
-  background: #1e222d;
-  border: 1px solid #363a45;
+  background: var(--bg-1);
+  border: 1px solid var(--line-2);
   border-radius: 3px;
   cursor: pointer;
   padding: 4px;
@@ -216,26 +216,26 @@
 
 .ts-row {
   align-items: center;
-  color: #787b86;
+  color: var(--tx-2);
   display: flex;
   font-size: 10px;
   gap: 6px;
 }
-.ts-row input[type="range"] { accent-color: #f0b90b; flex: 1; }
-.ts-row b { color: #d1d4dc; font-size: 10px; min-width: 32px; text-align: right; }
+.ts-row input[type="range"] { accent-color: var(--accent); flex: 1; }
+.ts-row b { color: var(--tx-0); font-size: 10px; min-width: 32px; text-align: right; }
 
 .ts-tfs { display: flex; flex-wrap: wrap; gap: 3px; }
 
 .ts-tf {
-  background: #1e222d;
-  border: 1px solid #363a45;
+  background: var(--bg-1);
+  border: 1px solid var(--line-2);
   border-radius: 3px;
-  color: #787b86;
+  color: var(--tx-2);
   cursor: pointer;
   font-size: 10px;
   padding: 2px 6px;
 }
-.ts-tf.on { background: #2a2410; border-color: #f0b90b; color: #f0b90b; }
+.ts-tf.on { background: #2a2410; border-color: #f0b90b; color: var(--accent); }
 
 .ts-preview {
   border: 1px solid;
@@ -246,16 +246,16 @@
 
 .ts-actions { display: flex; gap: 4px; }
 .ts-actions button {
-  background: #2a2e39;
-  border: 1px solid #363a45;
+  background: var(--bg-2);
+  border: 1px solid var(--line-2);
   border-radius: 3px;
-  color: #d1d4dc;
+  color: var(--tx-0);
   cursor: pointer;
   flex: 1;
   font-size: 10px;
   padding: 4px 6px;
 }
-.ts-actions button.primary { background: #f0b90b; border-color: #f0b90b; color: #131722; font-weight: 600; }
+.ts-actions button.primary { background: var(--accent); border-color: #f0b90b; color: var(--bg-0); font-weight: 600; }
 
 .rail-sep {
   width: 28px;
@@ -274,7 +274,7 @@
 
 .rail-count {
   margin-top: auto;
-  color: #4c525e;
+  color: var(--tx-3);
   font-size: 10px;
   padding: 6px 0;
 }
@@ -303,7 +303,7 @@
 /* Reports the active tool; looks like text on purpose so it is not mistaken for a
    control. The tool is chosen in the rail. */
 .active-tool {
-  color: #f0b90b;
+  color: var(--accent);
   font-size: 11px;
   white-space: nowrap;
   padding: 0 6px;

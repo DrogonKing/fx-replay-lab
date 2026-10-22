@@ -3,8 +3,8 @@
 html, body, #root {
   height: 100%;
   margin: 0;
-  background: #131722;
-  color: #d1d4dc;
+  background: var(--bg-0);
+  color: var(--tx-0);
   font: 13px/1.4 -apple-system, "Segoe UI", Roboto, Ubuntu, sans-serif;
 }
 
@@ -22,27 +22,27 @@ html, body, #root {
   align-items: center;
   gap: 12px;
   padding: 0 12px;
-  background: #1e222d;
-  border-bottom: 1px solid #2a2e39;
+  background: var(--bg-1);
+  border-bottom: 1px solid var(--line);
   /* Scrollable but visually quiet. The default 12px scrollbar inside a 44px bar eats a
    * quarter of the toolbar's height, and in RTL it renders at the inline-start (physical
    * left) where it reads as a stray element. Scrolling still works. */
   overflow-x: auto;
   scrollbar-width: thin;
-  scrollbar-color: #363a45 transparent;
+  scrollbar-color: var(--bg-3) transparent;
   white-space: nowrap;
 }
 
-.brand { color: #f0b90b; letter-spacing: 0.5px; }
+.brand { color: var(--accent); letter-spacing: 0.5px; }
 
 /* ---- timeframe / instrument menus in the toolbar ---- */
 
 .tf-menu { position: relative; }
 
 .tf-button {
-  background: #2a2e39;
-  border: 1px solid #363a45;
-  color: #d1d4dc;
+  background: var(--bg-2);
+  border: 1px solid var(--line-2);
+  color: var(--tx-0);
   border-radius: 4px;
   padding: 3px 8px;
   font-size: 12px;
@@ -54,9 +54,9 @@ html, body, #root {
   justify-content: center;
 }
 
-.tf-button:hover { background: #363a45; }
+.tf-button:hover { background: var(--bg-3); }
 .sym-button { min-width: 96px; justify-content: space-between; }
-.tf-caret { color: #787b86; font-size: 10px; }
+.tf-caret { color: var(--tx-2); font-size: 10px; }
 
 /*
   Fixed, not absolute: the toolbar scrolls (`overflow-x: auto`), which clips positioned children.
@@ -69,8 +69,8 @@ html, body, #root {
   width: 232px;
   max-height: 62vh;
   overflow-y: auto;
-  background: #1e222d;
-  border: 1px solid #363a45;
+  background: var(--bg-1);
+  border: 1px solid var(--line-2);
   border-radius: 6px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.55);
   padding: 6px;
@@ -82,7 +82,7 @@ html, body, #root {
   font-size: 10px;
   text-transform: uppercase;
   letter-spacing: 0.7px;
-  color: #787b86;
+  color: var(--tx-2);
   padding: 4px 6px 2px;
 }
 
@@ -95,40 +95,40 @@ html, body, #root {
   text-align: start;
   background: transparent;
   border: 0;
-  color: #d1d4dc;
+  color: var(--tx-0);
   font-size: 12px;
   padding: 5px 6px;
   border-radius: 4px;
   cursor: pointer;
 }
 
-.tf-pick:hover:not(:disabled) { background: #2a2e39; }
-.tf-pick.on { color: #2962ff; font-weight: 600; }
-.tf-pick:disabled { color: #4c525e; cursor: not-allowed; }
+.tf-pick:hover:not(:disabled) { background: var(--bg-2); }
+.tf-pick.on { color: var(--accent); font-weight: 600; }
+.tf-pick:disabled { color: var(--tx-3); cursor: not-allowed; }
 
 .tf-star {
   background: transparent;
   border: 0;
-  color: #4c525e;
+  color: var(--tx-3);
   cursor: pointer;
   font-size: 11px;
   padding: 2px 5px;
   border-radius: 3px;
 }
 
-.tf-star:hover { color: #f0b90b; background: #2a2e39; }
-.tf-star.on { color: #f0b90b; }
+.tf-star:hover { color: var(--accent); background: var(--bg-2); }
+.tf-star.on { color: var(--accent); }
 
-.tf-sep { height: 1px; background: #2a2e39; margin: 6px 4px; }
+.tf-sep { height: 1px; background: var(--bg-2); margin: 6px 4px; }
 
 .tf-custom { display: flex; gap: 4px; padding: 2px 4px; }
 
 .tf-custom input {
   flex: 1;
-  background: #131722;
-  border: 1px solid #363a45;
+  background: var(--bg-0);
+  border: 1px solid var(--line-2);
   border-radius: 4px;
-  color: #d1d4dc;
+  color: var(--tx-0);
   font-size: 12px;
   padding: 4px 6px;
 }
@@ -136,55 +136,55 @@ html, body, #root {
 .tf-custom input:focus { outline: none; border-color: #2962ff; }
 
 .tf-custom button {
-  background: #2a2e39;
-  border: 1px solid #363a45;
-  color: #d1d4dc;
+  background: var(--bg-2);
+  border: 1px solid var(--line-2);
+  color: var(--tx-0);
   border-radius: 4px;
   cursor: pointer;
   padding: 2px 9px;
 }
 
-.tf-custom button:hover { background: #363a45; }
+.tf-custom button:hover { background: var(--bg-3); }
 
 .tf-foot {
   margin: 6px 4px 2px;
   padding-top: 5px;
-  border-top: 1px solid #2a2e39;
-  color: #4c525e;
+  border-top: 1px solid var(--line);
+  color: var(--tx-3);
   font-size: 10px;
   line-height: 1.4;
 }
 
 .br-howto {
-  background: #131722;
-  border: 1px solid #2a2e39;
+  background: var(--bg-0);
+  border: 1px solid var(--line);
   border-radius: 5px;
   padding: 8px 10px;
   margin: 8px 0;
   font-size: 11px;
   line-height: 1.5;
-  color: #9aa0ac;
+  color: var(--tx-2);
 }
 
-.br-howto b { color: #d1d4dc; display: block; margin-bottom: 4px; font-size: 12px; }
+.br-howto b { color: var(--tx-0); display: block; margin-bottom: 4px; font-size: 12px; }
 .br-howto ol { margin: 0 0 6px; padding-inline-start: 16px; }
 .br-howto li { margin-bottom: 3px; }
 .br-howto code {
   display: block;
-  background: #1e222d;
-  border: 1px solid #363a45;
+  background: var(--bg-1);
+  border: 1px solid var(--line-2);
   border-radius: 3px;
   padding: 5px 7px;
-  color: #f0b90b;
+  color: var(--accent);
   font-size: 11px;
   user-select: all;
 }
-.br-howto-note { display: block; margin-top: 5px; color: #4c525e; font-size: 10px; }
+.br-howto-note { display: block; margin-top: 5px; color: var(--tx-3); font-size: 10px; }
 
 .panel-toggle {
-  background: #2a2e39;
-  border: 1px solid #363a45;
-  color: #787b86;
+  background: var(--bg-2);
+  border: 1px solid var(--line-2);
+  color: var(--tx-2);
   border-radius: 4px;
   padding: 3px 7px;
   font-size: 12px;
@@ -193,36 +193,36 @@ html, body, #root {
   flex-shrink: 0;
 }
 
-.panel-toggle:hover { background: #363a45; color: #d1d4dc; }
-.panel-toggle.on { color: #2962ff; border-color: #2962ff; }
+.panel-toggle:hover { background: var(--bg-3); color: var(--tx-0); }
+.panel-toggle.on { color: var(--accent); border-color: #2962ff; }
 .grow { flex: 1; }
 
 .toolbar label {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  color: #787b86;
+  color: var(--tx-2);
   /* never let a label shrink to the point of clipping its Persian text */
   flex-shrink: 0;
 }
 
 .toolbar::-webkit-scrollbar { height: 3px; }
 .toolbar::-webkit-scrollbar-track { background: transparent; }
-.toolbar::-webkit-scrollbar-thumb { background: #363a45; border-radius: 2px; }
+.toolbar::-webkit-scrollbar-thumb { background: var(--bg-3); border-radius: 2px; }
 
 .toolbar select,
 .toolbar input,
 .toolbar button {
-  background: #2a2e39;
-  color: #d1d4dc;
-  border: 1px solid #363a45;
+  background: var(--bg-2);
+  color: var(--tx-0);
+  border: 1px solid var(--line-2);
   border-radius: 4px;
   padding: 3px 6px;
   font: inherit;
 }
 
 .toolbar button { cursor: pointer; }
-.toolbar button:hover { background: #363a45; }
+.toolbar button:hover { background: var(--bg-3); }
 .w-16 { width: 56px; }
 
 .chart-area { grid-area: chart; position: relative; min-height: 0; }
@@ -238,19 +238,19 @@ html, body, #root {
   pointer-events: none;
   font-variant-numeric: tabular-nums;
   font-size: 12px;
-  color: #b2b5be;
+  color: var(--tx-1);
   z-index: 2;
 }
 
-.legend .sym { font-weight: 700; color: #d1d4dc; letter-spacing: 0.4px; }
-.legend .sep { color: #4c525e; }
-.legend .up { color: #26a69a; }
-.legend .down { color: #ef5350; }
+.legend .sym { font-weight: 700; color: var(--tx-0); letter-spacing: 0.4px; }
+.legend .sep { color: var(--tx-3); }
+.legend .up { color: var(--up); }
+.legend .down { color: var(--dn); }
 
 .panel {
   grid-area: panel;
-  background: #1e222d;
-  border-left: 1px solid #2a2e39;
+  background: var(--bg-1);
+  border-left: 1px solid var(--line);
   padding: 10px 12px;
   overflow-y: auto;
   display: flex;
@@ -263,13 +263,13 @@ html, body, #root {
   font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.7px;
-  color: #787b86;
+  color: var(--tx-2);
 }
 
 .kv { display: flex; justify-content: space-between; padding: 2px 0; }
-.kv span { color: #787b86; }
+.kv span { color: var(--tx-2); }
 
-.slider { width: 100%; margin: 10px 0; accent-color: #f0b90b; }
+.slider { width: 100%; margin: 10px 0; accent-color: var(--accent); }
 
 .ind-list { list-style: none; margin: 0; padding: 0; }
 .ind-list li {
@@ -284,19 +284,19 @@ html, body, #root {
 .mini {
   margin-left: auto;
   background: transparent;
-  border: 1px solid #363a45;
-  color: #787b86;
+  border: 1px solid var(--line-2);
+  color: var(--tx-2);
   border-radius: 3px;
   cursor: pointer;
   padding: 0 5px;
 }
 
-.status { color: #f0b90b; font-size: 12px; }
+.status { color: var(--accent); font-size: 12px; }
 
 .credit {
   margin-top: auto;
   padding-top: 10px;
-  color: #4c525e;
+  color: var(--tx-3);
   font-size: 11px;
 }
 
@@ -328,9 +328,9 @@ html, body, #root {
 }
 
 .tz-button {
-  background: #2a2e39;
-  border: 1px solid #363a45;
-  color: #d1d4dc;
+  background: var(--bg-2);
+  border: 1px solid var(--line-2);
+  color: var(--tx-0);
   border-radius: 4px;
   padding: 3px 8px;
   font-size: 12px;
@@ -340,9 +340,9 @@ html, body, #root {
   gap: 5px;
 }
 
-.tz-button:hover { background: #363a45; }
+.tz-button:hover { background: var(--bg-3); }
 
-.tz-caret { color: #787b86; font-size: 10px; }
+.tz-caret { color: var(--tx-2); font-size: 10px; }
 
 /*
   Positioned FIXED, not absolute.
@@ -356,8 +356,8 @@ html, body, #root {
   position: fixed;
   z-index: 200;
   width: 268px;
-  background: #1e222d;
-  border: 1px solid #363a45;
+  background: var(--bg-1);
+  border: 1px solid var(--line-2);
   border-radius: 6px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.55);
   padding: 8px;
@@ -366,9 +366,9 @@ html, body, #root {
 .tz-search {
   width: 100%;
   box-sizing: border-box;
-  background: #131722;
-  border: 1px solid #363a45;
-  color: #d1d4dc;
+  background: var(--bg-0);
+  border: 1px solid var(--line-2);
+  color: var(--tx-0);
   border-radius: 4px;
   padding: 5px 7px;
   font-size: 12px;
@@ -392,17 +392,17 @@ html, body, #root {
   gap: 8px;
   padding: 4px 7px;
   font-size: 12px;
-  color: #b2b5be;
+  color: var(--tx-1);
   border-radius: 3px;
   cursor: pointer;
 }
 
 /* hover state is driven by the keyboard cursor too, so arrow keys and the mouse agree */
-.tz-row.active { background: #2a2e39; }
+.tz-row.active { background: var(--bg-2); }
 
-.tz-row.on { color: #2962ff; }
+.tz-row.on { color: var(--accent); }
 
-.tz-row.on .tz-offset { color: #2962ff; }
+.tz-row.on .tz-offset { color: var(--accent); }
 
 .tz-city { display: inline-flex; align-items: center; gap: 6px; }
 
@@ -410,13 +410,13 @@ html, body, #root {
   width: 5px;
   height: 5px;
   border-radius: 50%;
-  background: #f0b90b;
+  background: var(--accent);
   display: inline-block;
   flex: 0 0 auto;
 }
 
 .tz-offset {
-  color: #787b86;
+  color: var(--tx-2);
   font-variant-numeric: tabular-nums;
   display: inline-flex;
   align-items: center;
@@ -425,7 +425,7 @@ html, body, #root {
 
 .tz-dst {
   font-size: 9px;
-  color: #f0b90b;
+  color: var(--accent);
   border: 1px solid #4a4022;
   border-radius: 2px;
   padding: 0 3px;
@@ -434,8 +434,8 @@ html, body, #root {
 .tz-foot {
   margin: 7px 0 0;
   padding-top: 6px;
-  border-top: 1px solid #2a2e39;
-  color: #4c525e;
+  border-top: 1px solid var(--line);
+  color: var(--tx-3);
   font-size: 10px;
   line-height: 1.4;
 }

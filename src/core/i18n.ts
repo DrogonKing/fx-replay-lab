@@ -166,7 +166,7 @@ export const MESSAGES: Record<Lang, Record<string, string>> = {
     "equity.maxDd": "max drawdown",
     "equity.nowDd": "current drawdown",
     "equity.empty": "no closed trades yet — the curve appears after the first one",
-    "tab.download": "data",
+    "tab.download": "Download",
     "start.resolution": "loading resolution",
     "start.framesNote": "Every timeframe above this is built from it, and you can type any custom one (7m, 90m, 3H).",
     // walk-forward

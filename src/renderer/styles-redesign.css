@@ -1,0 +1,62 @@
+/* Visual refresh layer. Loaded last; no logic or layout structure is changed. */
+html, body, #root {
+  background: var(--bg-0);
+  color: var(--tx-0);
+  font: 13px/1.45 "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+.app { grid-template-rows: 48px 1fr; }
+.toolbar { gap: 10px; padding: 0 14px; background: var(--bg-1); border-bottom: 1px solid var(--line); }
+.brand { color: var(--tx-0); font-weight: 700; letter-spacing: 0.2px; padding-inline-end: 6px; }
+.brand::before { content: ""; display: inline-block; width: 8px; height: 8px; margin-inline-end: 8px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 10px var(--accent); }
+
+button, select, input { transition: background var(--ease), border-color var(--ease), color var(--ease), box-shadow var(--ease); }
+.toolbar select, .toolbar input, .toolbar button, .tf-button, .tz-button, .panel-toggle {
+  background: var(--bg-2); border: 1px solid var(--line-2); border-radius: var(--r-sm); padding: 5px 10px; color: var(--tx-0);
+}
+.toolbar button:hover, .tf-button:hover, .tz-button:hover, .panel-toggle:hover { background: var(--bg-3); border-color: var(--accent); }
+:where(button, select, input, textarea):focus-visible { outline: none; box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 55%, transparent); border-color: var(--accent); }
+.panel-toggle.on { color: var(--accent); border-color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, var(--bg-2)); }
+
+.panel { background: var(--bg-1); border-inline-start: 1px solid var(--line); padding: 12px 14px; gap: 4px; }
+.panel h3 { color: var(--tx-3); font-size: 10.5px; letter-spacing: 1px; margin: 16px 0 8px; }
+.kv { padding: 5px 0; border-bottom: 1px solid color-mix(in srgb, var(--line) 60%, transparent); }
+.kv b, table.grid td, .legend { font-variant-numeric: tabular-nums; }
+
+.rail-tabs { gap: 4px; padding: 3px; background: var(--bg-0); border-radius: var(--r-md); border: 1px solid var(--line); }
+.rail-tab { border: 0 !important; border-radius: var(--r-sm); padding: 6px 8px; color: var(--tx-2); background: transparent; }
+.rail-tab:hover { color: var(--tx-0); background: var(--bg-2); }
+.rail-tab.active { background: var(--bg-3); color: var(--tx-0); box-shadow: inset 0 -2px 0 var(--accent); }
+.tabs .tab.active { color: var(--tx-0); box-shadow: inset 0 -2px 0 var(--accent); }
+
+.tf-dialog, .tz-dialog, .tool-flyout, .tool-settings, .start-card {
+  background: var(--bg-1); border: 1px solid var(--line-2); border-radius: var(--r-md); box-shadow: var(--shadow);
+}
+.tf-pick.on, .tz-row.on { color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); }
+.tf-pick:hover:not(:disabled), .tz-row.active, .flyout-item:hover { background: var(--bg-3); }
+.tf-star.on, .tf-star:hover { color: var(--warn); }
+
+.draw-rail { background: var(--bg-1); border-inline-end: 1px solid var(--line); }
+.tool-btn { border-radius: var(--r-sm); }
+.tool-btn:hover { background: var(--bg-3); }
+.tool-btn.active, .tool-btn.on { background: color-mix(in srgb, var(--accent) 16%, var(--bg-2)); color: var(--accent); }
+
+.order-form input, .order-form select, .field select, .row input, .sym-form input, .tz-search, .tf-custom input {
+  background: var(--bg-0); border: 1px solid var(--line-2); border-radius: var(--r-sm); color: var(--tx-0);
+}
+.buy-btn, .sell-btn { border-radius: var(--r-sm); font-weight: 700; letter-spacing: 0.3px; }
+.buy-btn { background: var(--up); border-color: var(--up); color: #04150e; }
+.sell-btn { background: var(--dn); border-color: var(--dn); color: #fff; }
+.buy-btn:hover, .sell-btn:hover { filter: brightness(1.1); }
+.start-actions button.primary, .ts-actions button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+.badge { border-radius: 999px; padding: 1px 9px; font-size: 11px; font-weight: 600; }
+.status-warn, .warn-box, .tz-dst { color: var(--warn); }
+.status { color: var(--tx-1); }
+.legend { top: 10px; left: 14px; padding: 4px 10px; background: color-mix(in srgb, var(--bg-0) 70%, transparent); border-radius: var(--r-sm); backdrop-filter: blur(6px); }
+.legend .sym { color: var(--tx-0); }
+table.grid th { color: var(--tx-2); font-weight: 600; text-transform: uppercase; font-size: 10.5px; letter-spacing: 0.6px; }
+table.grid tr:hover td { background: color-mix(in srgb, var(--bg-3) 50%, transparent); }
+
+* { scrollbar-width: thin; scrollbar-color: var(--line-2) transparent; }
+.slider { accent-color: var(--accent); }

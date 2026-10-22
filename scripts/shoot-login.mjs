@@ -46,7 +46,8 @@ await ev(`(async () => {
     d.set.call(el, v);
     el.dispatchEvent(new Event('input', { bubbles: true }));
   };
-  setNative('[data-field="br-login"]', '53109710');
+  // a placeholder, not a real account: this file ships in the source archive
+  setNative('[data-field="br-login"]', '10000001');
   setNative('[data-field="br-server"]', 'ICMarketsEU-Demo');
   await w(400);
   document.querySelector('[data-action="br-login"]')?.click();
