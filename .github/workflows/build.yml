@@ -55,12 +55,10 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: ubuntu-latest
-            target: linux
+          # Windows only: the in-app MetaTrader bridge needs the MetaTrader5 package, which ships
+          # win_amd64 wheels exclusively. Other platforms would build and then be unable to connect.
           - os: windows-latest
             target: win
-          - os: macos-latest
-            target: mac
 
     runs-on: ${{ matrix.os }}
     steps:
@@ -107,9 +105,6 @@ jobs:
           name: fx-replay-lab-${{ matrix.target }}
           path: |
             release/*.exe
-            release/*.dmg
-            release/*.AppImage
-            release/*.deb
             release/*.zip
           if-no-files-found: warn
           retention-days: 30

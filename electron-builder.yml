@@ -46,21 +46,14 @@ nsis:
   createDesktopShortcut: true
   shortcutName: FX Replay Lab
 
-mac:
-  target:
-    - target: dmg
-      arch: [x64, arm64]
-  category: public.app-category.finance
-  artifactName: "${productName}-${version}-${arch}.${ext}"
-
-linux:
-  target:
-    - target: AppImage
-      arch: [x64]
-    - target: deb
-      arch: [x64]
-  category: Finance
-  artifactName: "${productName}-${version}-${arch}.${ext}"
+# Windows only.
+#
+# Not a packaging preference: the in-app MetaTrader bridge depends on the MetaTrader5 package, which
+# publishes win_amd64 wheels and nothing else. A macOS or Linux build would install fine and then
+# show a permanently disabled Connect button, which is worse than not offering the build at all.
+#
+# Two artefacts: the NSIS installer (normal case) and a portable zip (no admin rights, runs from a
+# folder). Both are verified by scripts/release-smoke.sh.
 
 # No auto-update: the app is offline by design.
 publish: null

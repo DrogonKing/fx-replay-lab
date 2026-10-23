@@ -234,47 +234,6 @@ export function BrokerPanel({ onLoad, onStatus }: BrokerPanelProps): JSX.Element
     }
   }, [bridgeUrl, onStatus, t]);
 
-  /**
-   * Log the terminal in through the bridge.
-   *
-   * The bridge is the only thing that can do this: it holds the MetaTrader terminal, and there is
-   * no public API to authenticate one from outside. On success the password fields are cleared
-   * immediately — a credential left in a form field is a credential left on screen.
-   */
-  const doLogin = useCallback(async (): Promise<void> => {
-    const a = api();
-    if (!a.bridgeLogin) {
-      onStatus(t("br.noBridge"));
-      return;
-    }
-    if (mtLogin.trim() === "" || mtPassword === "" || mtServer.trim() === "") {
-      setLoginState("fail");
-      setLoginDetail(t("br.needCredsAll"));
-      return;
-    }
-    setLoginState("busy");
-    setLoginDetail("");
-    try {
-      const res = await a.bridgeLogin({
-        url: bridgeUrl, login: mtLogin.trim(), password: mtPassword, server: mtServer.trim(),
-      });
-      if (!res.ok) {
-        setLoginState("fail");
-        // the bridge's own error is passed through: "initialize failed: (-6, '...')" names the
-        // actual problem, and a generic message would hide it
-        setLoginDetail(res.error ?? "login failed");
-        return;
-      }
-      setLoginState("ok");
-      setLoginDetail(res.account ?? "");
-      setMtPassword("");
-      // a login means the bridge is usable, so re-probe rather than making the user press again
-      await testBridge();
-    } catch (e) {
-      setLoginState("fail");
-      setLoginDetail((e as Error).message);
-    }
-  }, [bridgeUrl, mtLogin, mtPassword, mtServer, onStatus, t, testBridge]);
 
   /*
     Auto-probe once on mount, but ONLY when the bridge can actually run here.
