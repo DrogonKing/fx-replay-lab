@@ -36,6 +36,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -69,20 +70,80 @@ def timeframes() -> dict[str, int]:
     return _tf_cache
 
 
+def _find_terminal() -> str | None:
+    """
+    Locate an installed MetaTrader 5 terminal executable.
+
+    Checked in the places MT5 actually installs to. Returned to initialize(path=...) so the bridge
+    attaches to that installation instead of letting the package pick one - and so a missing
+    terminal produces a clear message rather than a launched window.
+    """
+    candidates: list[str] = []
+    for base in (
+        os.environ.get("ProgramFiles", r"C:\Program Files"),
+        os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)"),
+    ):
+        if not base:
+            continue
+        # broker-branded installs live in their own folder under Program Files
+        try:
+            for name in os.listdir(base):
+                if "metatrader" in name.lower():
+                    candidates.append(os.path.join(base, name, "terminal64.exe"))
+        except OSError:
+            pass
+    # the MetaTrader5 package records the last used terminal here
+    try:
+        import configparser
+        cfg = configparser.ConfigParser()
+        cfg.read(os.path.join(os.environ.get("APPDATA", ""), "MetaQuotes", "Terminal", "common.ini"))
+        if cfg.has_option("Common", "Path"):
+            candidates.insert(0, os.path.join(cfg.get("Common", "Path"), "terminal64.exe"))
+    except Exception:
+        pass
+    for c in candidates:
+        if os.path.isfile(c):
+            return c
+    return None
+
+
 def connect(login: int | None, password: str | None, server: str | None) -> tuple[bool, str]:
-    """Attach to the terminal, logging in only if credentials were given."""
-    if login and password and server:
-        ok = mt5.initialize(login=login, password=password, server=server)
+    """
+    Attach to a MetaTrader terminal that is ALREADY RUNNING.
+
+    Deliberately does NOT pass credentials to initialize(). Doing so makes MetaTrader open its own
+    terminal window and log in there - which is the opposite of what this app promises: the user
+    wanted everything behind the scenes, not a second window popping up.
+
+    So the terminal is expected to be installed and running (started once, logged in once, by hand or
+    by autostart), and the bridge only attaches to it. Credentials are accepted for compatibility but
+    used only to verify the attached account matches what the user typed, never to start a session.
+    """
+    terminal = _find_terminal()
+    if terminal:
+        ok = mt5.initialize(path=terminal)
     else:
-        # the terminal is already logged in, which is the better way to run this
+        # no path found: try the plain attach, which uses whatever the package remembers
         ok = mt5.initialize()
 
     if not ok:
-        return False, f"initialize failed: {mt5.last_error()}"
+        return False, (
+            f"could not attach to a MetaTrader terminal: {mt5.last_error()}. "
+            f"MetaTrader 5 must be installed and running on this machine; start it once and log in."
+        )
 
     info = mt5.account_info()
     if info is None:
         return False, f"no account attached: {mt5.last_error()}"
+
+    # The terminal is already logged in as SOME account. If the user typed a different one, saying
+    # "connected" would be a lie about which account they are looking at.
+    if login and int(info.login) != int(login):
+        return False, (
+            f"this terminal is logged in as #{info.login} on {info.server}, but you entered #{login}. "
+            f"Log the terminal in to #{login} and try again — the app attaches to the running terminal "
+            f"and does not switch accounts by itself."
+        )
 
     # Only these three fields are ever read, and only for the startup log. Balance, equity and
     # positions are deliberately not touched.
