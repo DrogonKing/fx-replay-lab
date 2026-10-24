@@ -1,30 +1,14 @@
 
 /* ================= drawing rail + canvas overlay ================= */
 
-.app {
-  grid-template-columns: 44px 1fr 280px;
-  grid-template-areas: "toolbar toolbar toolbar" "rail chart panel";
-}
-
-/*
-  Panel hidden: the third column collapses to zero and its area disappears.
-  This lives here rather than in styles.css because this file is imported last and re-declares
-  `grid-template-columns`; a rule in the earlier file would be overridden. `:has()` keys off the
-  aside's own attribute, so the JSX does not need a second class on the root.
-*/
-.app:has(> .panel[data-panel-open="no"]) {
-  grid-template-columns: 44px 1fr 0;
-  grid-template-areas: "toolbar toolbar toolbar" "rail chart chart";
-}
-
-.app > .panel[data-panel-open="no"] {
-  display: none;
-}
+/* (The app-level grid — rail column, chart area, sidebar, dock — lives in styles.css.
+   This file styles only the rail and the overlay; it used to re-declare the grid here,
+   which meant two places to keep in sync on every layout change.) */
 
 .draw-rail {
   grid-area: rail;
-  background: #1a1e29;
-  border-right: 1px solid var(--line);
+  background: var(--bg-1);
+  border-inline-end: 1px solid var(--line);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -60,8 +44,8 @@
   flex: 0 0 auto;
 }
 
-.tool-btn:hover { background: #262b37; color: var(--tx-0); }
-.tool-btn.active { background: var(--bg-2); color: var(--accent); border-color: rgba(240,185,11,0.40); }
+.tool-btn:hover { background: var(--bg-2); color: var(--tx-0); }
+.tool-btn.active { background: var(--bg-2); color: var(--accent); border-color: var(--accent); }
 .tool-btn:disabled { opacity: 0.28; cursor: default; }
 .tool-btn:disabled:hover { background: transparent; color: var(--tx-2); }
 
@@ -76,7 +60,7 @@
   border: 1px solid var(--line-2);
   border-radius: 6px;
   padding: 5px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.55);
+  box-shadow: var(--shadow-menu);
   /* above the rail's own z-index 30 and above the chart host's 2 */
   z-index: 60;
   max-height: 380px;
@@ -111,8 +95,8 @@
 .flyout-item.active { background: var(--bg-2); color: var(--accent); }
 .fi-icon { width: 16px; text-align: center; color: var(--tx-2); }
 
-/* Group dividers. Near-invisible at var(--bg-2) on a #1a1e29 rail (1px, low
-   contrast) which made nine flyout groups read as one flat list. */
+/* Group dividers: 1px of var(--line-2) on the var(--bg-1) rail is deliberately quiet,
+   but still separates nine flyout groups. */
 /* A grouped button reads as "has more" only with this mark, the way TradingView's does. */
 .tool-chev {
   position: absolute;
@@ -183,7 +167,7 @@
   width: 18px;
 }
 
-.ts-swatches .sw.on { outline: 2px solid #d1d4dc; outline-offset: 1px; }
+.ts-swatches .sw.on { outline: 2px solid var(--tx-0); outline-offset: 1px; }
 .ts-swatches input[type="color"] { height: 18px; padding: 0; width: 26px; }
 
 .ts-widths { display: flex; gap: 4px; }
@@ -201,7 +185,7 @@
   width: 26px;
 }
 .ts-w span { width: 16px; }
-.ts-w.on { border-color: #f0b90b; }
+.ts-w.on { border-color: var(--accent); }
 
 .ts-styles { display: flex; gap: 4px; }
 
@@ -212,7 +196,7 @@
   cursor: pointer;
   padding: 4px;
 }
-.ts-ls.on { border-color: #f0b90b; }
+.ts-ls.on { border-color: var(--accent); }
 
 .ts-row {
   align-items: center;
@@ -235,7 +219,11 @@
   font-size: 10px;
   padding: 2px 6px;
 }
-.ts-tf.on { background: #2a2410; border-color: #f0b90b; color: var(--accent); }
+.ts-tf.on {
+  background: color-mix(in srgb, var(--accent) 14%, var(--bg-2));
+  border-color: var(--accent);
+  color: var(--accent);
+}
 
 .ts-preview {
   border: 1px solid;
@@ -255,12 +243,12 @@
   font-size: 10px;
   padding: 4px 6px;
 }
-.ts-actions button.primary { background: var(--accent); border-color: #f0b90b; color: var(--bg-0); font-weight: 600; }
+.ts-actions button.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
 
 .rail-sep {
   width: 28px;
   height: 1px;
-  background: #363b47;
+  background: var(--line-2);
   margin: 4px 0;
   flex: 0 0 auto;
 }
@@ -268,7 +256,7 @@
 .rail-sep.strong {
   width: 30px;
   height: 2px;
-  background: #4a5060;
+  background: var(--tx-3);
   margin: 7px 0;
 }
 

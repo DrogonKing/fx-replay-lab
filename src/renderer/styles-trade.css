@@ -3,6 +3,118 @@
 
 .trade-panel { padding: 8px 10px; }
 
+/* ---- paper account card (top of the Trade tab, compact TV style) ---- */
+
+.paper-card {
+  border-bottom: 1px solid var(--line);
+  padding: 8px 10px 10px;
+}
+
+.paper-stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.paper-stats div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.paper-stats span {
+  color: var(--tx-2);
+  font-size: 9px;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
+.paper-stats b {
+  color: var(--tx-0);
+  font-size: 11.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.paper-form {
+  display: grid;
+  grid-template-columns: 1fr 1fr auto auto;
+  align-items: end;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.paper-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 10px;
+  color: var(--tx-2);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.paper-form input {
+  background: var(--bg-1);
+  border: 1px solid var(--line-2);
+  border-radius: 4px;
+  color: var(--tx-0);
+  font: inherit;
+  font-size: 12px;
+  padding: 4px 6px;
+  min-width: 0;
+}
+
+.paper-form input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.paper-form button {
+  background: var(--bg-1);
+  border: 1px solid var(--line-2);
+  border-radius: 4px;
+  color: var(--tx-0);
+  cursor: pointer;
+  font: inherit;
+  font-size: 11px;
+  padding: 5px 9px;
+  white-space: nowrap;
+}
+
+.paper-form button:hover { border-color: var(--accent); }
+
+/* The armed confirm: the destructive action needs a second, informed click. */
+.paper-confirm {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  grid-column: 1 / -1;
+  margin: 0;
+  font-size: 10.5px;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.paper-confirm button {
+  border-color: color-mix(in srgb, var(--warn) 45%, transparent);
+  color: var(--warn);
+}
+
+/* ---- money-management ticket ---- */
+
+/* The refusal is the core's own arithmetic; red, verbatim, no softening. */
+.mm-refusal {
+  color: var(--dn);
+  font-size: 11px;
+  line-height: 1.4;
+  margin: 6px 0;
+}
+
 .order-form {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -59,7 +171,7 @@
 
 .order-form input:focus {
   outline: none;
-  border-color: rgba(240,185,11,0.53);
+  border-color: var(--accent);
 }
 
 .buy-btn,
@@ -94,10 +206,10 @@
 }
 
 .warn-box {
-  background: #3a2a1a;
-  border: 1px solid rgba(240,185,11,0.40);
+  background: color-mix(in srgb, var(--warn) 10%, var(--bg-0));
+  border: 1px solid color-mix(in srgb, var(--warn) 35%, transparent);
   border-radius: 4px;
-  color: var(--accent);
+  color: var(--warn);
   font-size: 11px;
   padding: 6px 8px;
   margin: 8px 0;
@@ -129,15 +241,15 @@
 .be-row .hint {
   text-transform: none;
   letter-spacing: 0;
-  color: #5d606b;
+  color: var(--tx-3);
 }
 
 /* ================= start screen ================= */
 .start-screen {
   align-items: center;
   background:
-    radial-gradient(circle at 30% 10%, #1b2130 0%, transparent 55%),
-    radial-gradient(circle at 75% 85%, #171c27 0%, transparent 50%),
+    radial-gradient(circle at 30% 10%, var(--bg-1) 0%, transparent 55%),
+    radial-gradient(circle at 75% 85%, var(--bg-1) 0%, transparent 50%),
     var(--bg-0);
   display: flex;
   height: 100%;
@@ -147,8 +259,8 @@
 }
 
 .start-card {
-  background: #161b26;
-  border: 1px solid #242b36;
+  background: var(--bg-1);
+  border: 1px solid var(--line-2);
   border-radius: 12px;
   max-width: 460px;
   padding: 26px 28px;
@@ -178,8 +290,8 @@
   transition: border-color 0.12s, background 0.12s;
 }
 
-.start-mode:hover { background: #212836; }
-.start-mode.on { background: #23283a; border-color: #f0b90b; }
+.start-mode:hover { background: var(--bg-2); }
+.start-mode.on { background: var(--bg-2); border-color: var(--accent); }
 .start-mode b { display: block; font-size: 13px; margin-bottom: 3px; }
 .start-mode.on b { color: var(--accent); }
 .start-mode span { color: var(--tx-2); font-size: 10.5px; line-height: 1.35; }
@@ -217,7 +329,7 @@
   font-size: 11px;
   padding: 5px 0;
 }
-.si.on { background: #23283a; border-color: #f0b90b; color: var(--accent); font-weight: 600; }
+.si.on { background: var(--bg-2); border-color: var(--accent); color: var(--accent); font-weight: 600; }
 
 .start-period { display: flex; gap: 6px; }
 .start-period select { flex: 1; }
@@ -229,9 +341,9 @@
   margin: 0 0 12px;
   padding: 7px 9px;
 }
-.start-avail { background: #14231c; color: #6fbf9a; }
-.start-avail.warn { background: #2a2410; color: var(--accent); }
-.start-avail.bad { background: #2a1a1a; color: #ef8b8b; }
+.start-avail { background: color-mix(in srgb, var(--up) 12%, var(--bg-0)); color: var(--up); }
+.start-avail.warn { background: color-mix(in srgb, var(--warn) 10%, var(--bg-0)); color: var(--warn); }
+.start-avail.bad { background: color-mix(in srgb, var(--dn) 12%, var(--bg-0)); color: var(--dn); }
 
 .start-actions { display: flex; gap: 8px; }
 
@@ -249,17 +361,17 @@
 
 .start-actions button.primary {
   background: var(--accent);
-  border-color: #f0b90b;
-  color: var(--bg-0);
+  border-color: var(--accent);
+  color: #fff;
   font-weight: 600;
 }
-.start-actions button.primary:disabled { background: #3a3a2a; border-color: #3a3a2a; color: var(--tx-2); cursor: default; }
-.start-actions button:hover:not(:disabled) { border-color: #3a4351; }
-.start-actions button.primary:hover:not(:disabled) { background: #f7c41f; }
+.start-actions button.primary:disabled { background: var(--bg-3); border-color: var(--bg-3); color: var(--tx-2); cursor: default; }
+.start-actions button:hover:not(:disabled) { border-color: var(--line-2); }
+.start-actions button.primary:hover:not(:disabled) { filter: brightness(1.15); }
 
 .start-foot {
-  border-top: 1px solid #232b36;
-  color: #5c6373;
+  border-top: 1px solid var(--line);
+  color: var(--tx-3);
   font-size: 10px;
   margin: 16px 0 0;
   padding-top: 12px;
@@ -400,7 +512,7 @@
 /* The winner is outlined, not recoloured: the fill already encodes the value, and a second
    colour would fight it. */
 .heat-grid td.heat-best {
-  outline: 2px solid #f0b90b;
+  outline: 2px solid var(--accent);
   outline-offset: -2px;
 }
 
@@ -626,7 +738,7 @@
   cursor: pointer;
 }
 
-.news-import button:hover { border-color: rgba(240,185,11,0.53); }
+.news-import button:hover { border-color: var(--accent); }
 
 .news-table { font-size: 10px; }
 .news-table .news-title {
@@ -641,8 +753,8 @@
 .impact-low { color: var(--tx-2); }
 
 .blackout-active {
-  background: #3a1a1a;
-  border: 1px solid rgba(239,83,80,0.53);
+  background: color-mix(in srgb, var(--dn) 12%, var(--bg-0));
+  border: 1px solid color-mix(in srgb, var(--dn) 45%, transparent);
   border-radius: 4px;
   color: var(--dn);
   font-size: 11px;
@@ -658,7 +770,7 @@
   margin: 8px 0;
 }
 
-.row-blocked { background: rgba(58,26,26,0.33); }
+.row-blocked { background: color-mix(in srgb, var(--dn) 20%, transparent); }
 
 .news-issues {
   font-size: 10px;
@@ -675,9 +787,9 @@
 }
 
 .status-warn {
-  color: var(--accent) !important;
-  border-left: 2px solid #f0b90b;
-  padding-left: 6px;
+  color: var(--warn) !important;
+  border-inline-start: 2px solid var(--warn);
+  padding-inline-start: 6px;
 }
 
 .row-actions {

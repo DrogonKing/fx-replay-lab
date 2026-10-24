@@ -10,6 +10,7 @@
  * part that has to be exactly right.
  */
 import type { Candle } from "./types.js";
+import { latinNum } from "./format.js";
 
 /**
  * Dukascopy URLs are ZERO-INDEXED by month.
@@ -194,7 +195,7 @@ export function progressFraction(p: DownloadProgress): number {
 export function describeProgress(p: DownloadProgress): string {
   const pct = Math.round(progressFraction(p) * 100);
   const parts = [`${pct}% (${p.done}/${p.total} days)`];
-  if (p.bars > 0) parts.push(`${p.bars.toLocaleString()} bars`);
+  if (p.bars > 0) parts.push(`${latinNum(p.bars)} bars`);
   if (p.empty > 0) parts.push(`${p.empty} empty`);
   if (p.failed > 0) parts.push(`${p.failed} failed`);
   return parts.join(" · ");

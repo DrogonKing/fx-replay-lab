@@ -1,21 +1,46 @@
-/* Design tokens. Change a value here and the whole app follows. */
+/* Design tokens. Change a value here and the whole app follows.
+ *
+ * Palette: the classic dark-terminal look (colours and layout only — no third-party
+ * logos or assets anywhere in this app). Amber (#f0b90b) is reserved for WARNINGS;
+ * it is not a second accent. Selected states are always accent-based.
+ */
 :root {
-  --bg-0: #0d1119;   /* chart + app canvas */
-  --bg-1: #131822;   /* toolbar, side panel, dialogs */
-  --bg-2: #1b2230;   /* controls */
-  --bg-3: #252d3f;   /* hover */
-  --line: #232b3b;   /* hairlines */
-  --line-2: #2f394e; /* control borders */
-  --tx-0: #e8ebf2;
-  --tx-1: #c3c9d6;
-  --tx-2: #8d96aa;
-  --tx-3: #586177;
-  --accent: #5b8def;
-  --up: #22c58b;
-  --dn: #f2495e;
-  --warn: #f0b90b;
+  --bg-0: #131722;   /* app + chart canvas */
+  --bg-1: #1e222d;   /* toolbar, rail, sidebar, dock, dialogs */
+  --bg-2: #2a2e39;   /* control background / hover */
+  --bg-3: #363a45;   /* pressed */
+  --line: #2a2e39;   /* hairlines */
+  --line-2: #363a45; /* control borders */
+  --tx-0: #d1d4dc;   /* primary text */
+  --tx-1: #b2b5be;   /* secondary text */
+  --tx-2: #787b86;   /* muted text */
+  --tx-3: #5d606b;   /* faint text / placeholders */
+  --accent: #2962ff;
+  --up: #26a69a;
+  --dn: #ef5350;
+  --warn: #f0b90b;   /* warnings ONLY — never a selection colour */
+
+  /* radii + elevation */
   --r-sm: 6px;
   --r-md: 10px;
+  --r-pill: 999px;
   --shadow: 0 14px 36px rgba(0, 0, 0, 0.55);
+  --shadow-menu: 0 8px 24px rgba(0, 0, 0, 0.55);
+  --focus-ring: 0 0 0 2px rgba(41, 98, 255, 0.45);
+
+  /* shell anatomy: one place to resize the chrome */
+  --toolbar-h: 40px;
+  --rail-w: 44px;
+  --sidebar-w: 300px;
+  --dock-h: 220px;
+
+  /* spacing scale */
+  --space-1: 2px;
+  --space-2: 4px;
+  --space-3: 8px;
+  --space-4: 12px;
+  --space-5: 16px;
+  --space-6: 24px;
+
   --ease: 140ms cubic-bezier(0.2, 0, 0, 1);
 }

@@ -37,9 +37,6 @@ export const INTRADAY_LIMIT_DAYS: Record<number, number> = {
   10080: 365 * 30,
 };
 
-/** Intervals the provider can serve natively, without aggregation. */
-export const NATIVE_INTERVALS = [1, 5, 15, 30, 60, 1440, 10080] as const;
-
 /**
  * Below this many days of history, a replay is not worth offering: the user asked for a year
  * and would get a fortnight. Chosen so 1-minute data (7 days) needs a file while 5-minute data

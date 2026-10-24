@@ -18,10 +18,12 @@ import {
   type Time,
 } from "lightweight-charts";
 import { generateSampleSeries } from "./sample.js";
+import { latinNum } from "../core/format.js";
+import { CHART_THEME, overlayTheme } from "./chart-theme.js";
 import { aggregate, TIMEFRAMES, parseTimeframeLabel } from "../core/aggregate.js";
 import { sma, ema, bollinger, rsi } from "../core/indicators.js";
 import { adx, cci, vwap, supertrend } from "../core/indicators-ext.js";
-import { formatDateTime, formatOffset } from "../core/timezone.js";
+import { formatDateTime } from "../core/timezone.js";
 import { parseCsv } from "../core/csv.js";
 import { seriesFromCandles } from "../core/series.js";
 import {
@@ -37,10 +39,13 @@ import {
 import { nearestDrawing } from "../core/drawing-interaction.js";
 import { DrawingToolbar, TOOL_LABELS, ALL_KINDS } from "./DrawingToolbar.js";
 import { ToolSettings } from "./panels/ToolSettings.js";
-import { StartScreen, type StartChoice } from "./panels/StartScreen.js";
+import { LoginOverlay, type MtAccountInfo } from "./ui/LoginOverlay.js";
 import {
   TimeframeMenu, SymbolMenu, loadTfFavourites, saveTfFavourites,
 } from "./TimeframeMenu.js";
+import {
+  pollMtLive, mtPollSeconds, mtSymbolName, mtTimeframeLabel,
+} from "./mt-feed.js";
 import {
   mergeSeries, newBarIndices, availability, effectiveFrom, describeMode,
   parseModeState, type SessionMode, type ModeState,
@@ -53,11 +58,14 @@ import { DrawingOverlay, toData } from "./overlay.js";
 import {
   parseDrawings, serialiseDrawings, workspaceKey,
 } from "../core/persist.js";
-import { TradingSession } from "./trading.js";
+import { TradingSession, type PaperCosts, type PaperLimits } from "./trading.js";
 import {
   positionLines, hitHandle,
 } from "../core/position-manage.js";
 import { TradePanel } from "./panels/TradePanel.js";
+import { PaperAccountCard, type PaperAccountSettings } from "./panels/PaperAccountCard.js";
+import { PositionsOrdersTab, HistoryTab } from "./panels/PositionsTables.js";
+import { ChartTypeMenu } from "./ui/ChartTypeMenu.js";
 import { NewsPanel } from "./panels/NewsPanel.js";
 import { SessionsPanel } from "./panels/SessionsPanel.js";
 import { EquityPanel } from "./panels/EquityPanel.js";
@@ -79,14 +87,17 @@ import { BrokerPanel } from "./panels/BrokerPanel.js";
 import { TimezonePicker } from "./panels/TimezonePicker.js";
 import { createFeed, symbols as LIVE_SYMBOLS } from "./livefeed.js";
 import { findSymbol } from "../core/symbol.js";
-import type { Feed, FeedStatus } from "../core/feed.js";
-import type { Candle, CandleSeries, Timeframe } from "../core/types.js";
+import type { Feed, FeedStatus, LoadResult } from "../core/feed.js";
+import type { Candle, CandleSeries, Timeframe, Account } from "../core/types.js";
 import { auditCandles, describeSpacing, parseText } from "../core/importer.js";
 
 type IndicatorKind = "SMA" | "EMA" | "BB" | "RSI" | "ADX" | "CCI" | "VWAP" | "SUPERTREND";
+/** tabs of the right sidebar */
 type RailTab =
-  | "data" | "download" | "broker" | "trade" | "news" | "sessions" | "equity"
-  | "indicators" | "strategy" | "journal" | "symbols";
+  | "data" | "download" | "broker" | "trade" | "news" | "sessions"
+  | "indicators" | "symbols";
+/** tabs of the bottom dock */
+type DockTab = "positions" | "history" | "strategy" | "journal" | "equity";
 
 const SESSION_LABELS: Record<SessionName, string> = {
   sydney: sessionLabel("sydney"),
@@ -108,9 +119,27 @@ const INDICATOR_COLORS: Record<IndicatorKind, string> = {
   ADX: "#26c6da", CCI: "#ec407a", VWAP: "#9ccc65", SUPERTREND: "#ffa726",
 };
 
-const ACCOUNT = {
-  id: 1, name: "Demo", currency: "USD", startingBalance: 10_000,
-  leverage: 100, mode: "hedging" as const,
+const DEFAULT_PAPER_ACCOUNT: PaperAccountSettings = {
+  startingBalance: 10_000, leverage: 100, mode: "hedging",
+};
+
+/** The Account object the engine takes, built from the paper-account settings. */
+const paperEngineAccount = (p: PaperAccountSettings): Account => ({
+  id: 1, name: "Paper", currency: "USD",
+  startingBalance: p.startingBalance, leverage: p.leverage, mode: p.mode,
+});
+
+/**
+ * Default cost overrides for a symbol: its own spread, expressed in points, and its
+ * own commission per lot. Points because that is what a broker quotes and what the
+ * paper-account card collects; the engine takes price units.
+ */
+const defaultPaperCosts = (symId: string): PaperCosts => {
+  const spec = findSymbol(symId);
+  return {
+    spreadPoints: Number((spec.spread * Math.pow(10, spec.digits)).toFixed(1)),
+    commissionPerLot: spec.commissionPerLot,
+  };
 };
 
 export function App(): JSX.Element {
@@ -129,23 +158,24 @@ function makePriceSeries(
 ): ISeriesApi<"Candlestick"> {
   if (kind === "bars") {
     return chart.addBarSeries({
-      upColor: "#22c58b", downColor: "#f2495e", thinBars: false,
+      upColor: CHART_THEME.up, downColor: CHART_THEME.down, thinBars: false,
     }) as unknown as ISeriesApi<"Candlestick">;
   }
   if (kind === "line") {
     return chart.addLineSeries({
-      color: "#22c58b", lineWidth: 2, priceLineVisible: false,
+      color: CHART_THEME.up, lineWidth: 2, priceLineVisible: false,
     }) as unknown as ISeriesApi<"Candlestick">;
   }
   if (kind === "area") {
     return chart.addAreaSeries({
-      lineColor: "#22c58b", topColor: "rgba(34,197,139,0.28)",
+      lineColor: CHART_THEME.up,
+      topColor: "rgba(38,166,154,0.28)",
       bottomColor: "rgba(38,166,154,0.02)", lineWidth: 2,
     }) as unknown as ISeriesApi<"Candlestick">;
   }
   return chart.addCandlestickSeries({
-    upColor: "#22c58b", downColor: "#f2495e", borderVisible: false,
-    wickUpColor: "#22c58b", wickDownColor: "#f2495e",
+    upColor: CHART_THEME.up, downColor: CHART_THEME.down, borderVisible: false,
+    wickUpColor: CHART_THEME.up, wickDownColor: CHART_THEME.down,
   });
 }
 
@@ -184,7 +214,11 @@ function makePriceSeries(
     { id: 1, kind: "SMA", period: 20, color: INDICATOR_COLORS.SMA },
   ]);
   const [status, setStatus] = useState<string>("");
-  const [rail, setRail] = useState<RailTab>("data");
+  const [rail, setRail] = useState<RailTab>("trade");
+
+  /** Bottom dock: underline tabs under the chart, collapsed until asked for. */
+  const [dockOpen, setDockOpen] = useState(false);
+  const [dockTab, setDockTab] = useState<DockTab>("positions");
 
   /**
    * Whether the right-hand panel is showing.
@@ -248,7 +282,22 @@ function makePriceSeries(
   const [offline, setOffline] = useState(true);
   // EUR/USD: this is a forex tool and the start screen no longer asks, so the default is the
   // instrument the app is actually for.
-  const [symbolId, setSymbolId] = useState("EURUSD=X");
+  const [symbolId, setSymbolId] = useState<string>("EURUSD=X");
+  /**
+   * The instrument that is live RIGHT NOW.
+   *
+   * An async poll captures `symbolId` at the time it started, so without a ref the reply cannot know
+   * it has been superseded and stale bars land on the new chart.
+   *
+   * `chooseSymbol` writes this ref synchronously, before setState. A useEffect would run AFTER the
+   * render that carries the new symbol, leaving a window in which an in-flight poll resolves and is
+   * judged against the old value - which is the exact bug this prevents.
+   */
+  const symbolRef = useRef<string>("EURUSD=X");
+  const chooseSymbol = useCallback((id: string): void => {
+    symbolRef.current = id;
+    setSymbolId(id);
+  }, []);
 
   /**
    * Frames pinned to the top of the menu.
@@ -274,13 +323,172 @@ function makePriceSeries(
   // effect that rebuilds on [symbolId] replaced the session on the very first commit,
   // which silently threw away a restored one — the restore import landed on an instance
   // the UI then discarded.
-  const [session, setSession] = useState(() => new TradingSession(sessionSymbol(symbolId)));
+  //
+  // The paper account starts at the DEFAULT settings (they equal the engine's own
+  // defaults, so behaviour is identical); the persisted settings are applied once they
+  // have been read AND the session-restore attempt has settled (see below), so a resume
+  // always beats the configured defaults.
+  const [paperAccount, setPaperAccount] = useState<PaperAccountSettings>(DEFAULT_PAPER_ACCOUNT);
+  const [paperCosts, setPaperCosts] = useState<PaperCosts>(() =>
+    defaultPaperCosts(sessionSymbol(symbolId)));
+  /**
+   * Session loss/profit limits, off by default like the EA's 0.0.
+   *
+   * Unlike the costs, these are read-only state for the engine, so they never need a
+   * rebuild — they are re-applied to whatever session is current (see the effect on
+   * [session] below), which is why they live here rather than inside the card.
+   */
+  const [paperLimits, setPaperLimits] = useState<PaperLimits>({ maxLoss: 0, maxProfit: 0 });
+  /** true once the stored paper settings (or their absence) have been read */
+  const [paperHydrated, setPaperHydrated] = useState(false);
+  /** true once a stored costs override was found; until then costs follow the symbol */
+  const costsStoredRef = useRef(false);
+  /** latest values for the rebuild paths that must not close over stale state */
+  const paperAccountRef = useRef(paperAccount);
+  const paperCostsRef = useRef(paperCosts);
+  const paperLimitsRef = useRef(paperLimits);
+  useEffect(() => {
+    paperAccountRef.current = paperAccount;
+    paperCostsRef.current = paperCosts;
+    paperLimitsRef.current = paperLimits;
+  }, [paperAccount, paperCosts, paperLimits]);
+
+  /** true once a stored session was actually imported; the boot rebuild must not discard it */
+  const restoreAppliedRef = useRef(false);
+
+  const [session, setSession] = useState(() => new TradingSession(
+    sessionSymbol(symbolId),
+    paperEngineAccount(DEFAULT_PAPER_ACCOUNT),
+    defaultPaperCosts(sessionSymbol(symbolId)),
+  ));
   const sessionForSymbol = useRef(symbolId);
   useEffect(() => {
     if (sessionForSymbol.current === symbolId) return;
     sessionForSymbol.current = symbolId;
-    setSession(new TradingSession(sessionSymbol(symbolId)));
+    const sym = sessionSymbol(symbolId);
+    // Costs follow the symbol until the user has saved their own: 20 points means
+    // something very different on gold than on a 5-digit pair.
+    const costs = costsStoredRef.current ? paperCostsRef.current : defaultPaperCosts(sym);
+    if (!costsStoredRef.current) setPaperCosts(costs);
+    setSession(new TradingSession(sym, paperEngineAccount(paperAccountRef.current), costs));
   }, [symbolId]);
+
+  /**
+   * Re-apply the session limits whenever the session instance is rebuilt.
+   *
+   * A symbol switch, an account reset and the boot-time settings rebuild all create
+   * a FRESH TradingSession, which starts unlimited — without this, the configured
+   * limits would silently vanish exactly when the account they measure is replaced.
+   */
+  useEffect(() => {
+    session.setLimits(paperLimitsRef.current);
+  }, [session]);
+
+  /**
+   * Read the persisted paper account and cost overrides, once.
+   *
+   * Both settings are stored as JSON strings under fixed keys. Unreadable or partial
+   * values fall back to the defaults silently: a corrupt row must not stop the app
+   * from booting with a usable account.
+   */
+  useEffect(() => {
+    const api = (globalThis as unknown as { fxlab?: {
+      getSetting?: (key: string) => Promise<string | null>;
+    } }).fxlab;
+    if (!api?.getSetting) {
+      setPaperHydrated(true);
+      return;
+    }
+    let cancelled = false;
+    const readNum = (raw: unknown): number | null =>
+      typeof raw === "number" && Number.isFinite(raw) ? raw : null;
+    void Promise.all([
+      api.getSetting("paper_account"), api.getSetting("paper_costs"),
+      api.getSetting("paper_limits"),
+    ])
+      .then(([accRaw, costsRaw, limitsRaw]) => {
+        if (cancelled) return;
+        if (accRaw !== null) {
+          try {
+            const p = JSON.parse(accRaw) as Partial<PaperAccountSettings>;
+            const sb = readNum(p.startingBalance);
+            const lev = readNum(p.leverage);
+            if (sb !== null && sb > 0 && lev !== null && lev >= 1) {
+              const next = {
+                ...DEFAULT_PAPER_ACCOUNT,
+                startingBalance: sb,
+                leverage: Math.floor(lev),
+              };
+              paperAccountRef.current = next;
+              setPaperAccount(next);
+            }
+          } catch {
+            // unreadable settings: the defaults are perfectly usable
+          }
+        }
+        if (costsRaw !== null) {
+          try {
+            const p = JSON.parse(costsRaw) as Partial<PaperCosts>;
+            const sp = readNum(p.spreadPoints);
+            const com = readNum(p.commissionPerLot);
+            if (sp !== null && sp >= 0 && com !== null && com >= 0) {
+              const next = { spreadPoints: sp, commissionPerLot: com };
+              costsStoredRef.current = true;
+              paperCostsRef.current = next;
+              setPaperCosts(next);
+            }
+          } catch {
+            // same: symbol defaults apply
+          }
+        }
+        if (limitsRaw !== null) {
+          try {
+            const p = JSON.parse(limitsRaw) as Partial<PaperLimits>;
+            const ml = readNum(p.maxLoss);
+            const mp = readNum(p.maxProfit);
+            if (ml !== null && ml >= 0 && mp !== null && mp >= 0) {
+              const next = { maxLoss: ml, maxProfit: mp };
+              paperLimitsRef.current = next;
+              setPaperLimits(next);
+            }
+          } catch {
+            // unreadable limits: unlimited, the default the account boots with
+          }
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setPaperHydrated(true);
+      });
+    return () => { cancelled = true; };
+  }, []);
+
+  /**
+   * Apply the persisted paper account once the restore attempt has settled.
+   *
+   * A resumed session wins over the configured defaults — it IS the account — so the
+   * rebuild is skipped when a restore landed. Bar processing is gated on
+   * restoreSettled too, so nothing has traded against the default session by the
+   * time this runs: replacing it discards nothing. Values equal to the defaults need
+   * no rebuild at all.
+   */
+  useEffect(() => {
+    if (!paperHydrated || !restoreSettled || restoreAppliedRef.current) return;
+    const sym = sessionSymbol(symbolId);
+    const defaults = defaultPaperCosts(sym);
+    const accountIsDefault =
+      paperAccount.startingBalance === DEFAULT_PAPER_ACCOUNT.startingBalance &&
+      paperAccount.leverage === DEFAULT_PAPER_ACCOUNT.leverage;
+    const costsAreDefault =
+      paperCosts.spreadPoints === defaults.spreadPoints &&
+      paperCosts.commissionPerLot === defaults.commissionPerLot;
+    if (accountIsDefault && costsAreDefault) return;
+    setSession(new TradingSession(
+      sym, paperEngineAccount(paperAccount), paperCosts,
+    ));
+    // read-once at boot: later changes go through resetPaperAccount and the symbol
+    // effect, which own their rebuilds
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [paperHydrated, restoreSettled]);
   const [feedStatus, setFeedStatus] = useState<FeedStatus | null>(null);
   const [loading, setLoading] = useState(false);
   const [tool, setTool] = useState<DrawingKind | null>(null);
@@ -298,12 +506,26 @@ function makePriceSeries(
   const [hiddenDrawings, setHiddenDrawings] = useState(false);
   const [favourites, setFavourites] = useState<DrawingKind[]>([]);
 
-  /** live paper trading, or replay; null until the start screen has been answered */
+  /** live paper trading, or replay; null until the login overlay has been answered */
   const [sessionMode, setSessionMode] = useState<SessionMode | null>(null);
   const [modeState, setModeState] = useState<ModeState>(() => parseModeState(null));
   /** the last bar time the account has already processed, so a poll cannot re-charge it */
   const lastProcessedRef = useRef(0);
   const liveTimerRef = useRef<number | null>(null);
+
+  /**
+   * The connected MetaTrader account, if any.
+   *
+   * While set, the live poll reads the terminal (via mtLatest) instead of Yahoo, and
+   * the badge reads LIVE (MT). Kept in a ref as well because the poll timer effect
+   * must see the CURRENT source without being torn down and rebuilt on connect.
+   */
+  const [mtAccount, setMtAccount] = useState<MtAccountInfo | null>(null);
+  const mtRef = useRef<MtAccountInfo | null>(null);
+  const connectMt = useCallback((info: MtAccountInfo | null): void => {
+    mtRef.current = info;
+    setMtAccount(info);
+  }, []);
 
   // Load the saved per-tool styles once. A failure here must not stop the app: the defaults
   // are perfectly usable, so it reports and carries on.
@@ -393,17 +615,19 @@ function makePriceSeries(
     if (!chartHost.current) return;
     const chart = createChart(chartHost.current, {
       layout: {
-        background: { color: "#0d1119" },
-        textColor: "#c3c9d6",
+        background: { color: CHART_THEME.background },
+        textColor: CHART_THEME.text,
         attributionLogo: false,   // spec: no TradingView logos/assets
       },
       grid: {
-        vertLines: { color: "#151b27" },
-        horzLines: { color: "#151b27" },
+        vertLines: { color: CHART_THEME.grid },
+        horzLines: { color: CHART_THEME.grid },
       },
       crosshair: { mode: 0 },
-      rightPriceScale: { borderColor: "#232b3b" },
-      timeScale: { borderColor: "#232b3b", timeVisible: true, secondsVisible: false },
+      rightPriceScale: { borderColor: CHART_THEME.axisBorder },
+      timeScale: {
+        borderColor: CHART_THEME.axisBorder, timeVisible: true, secondsVisible: false,
+      },
       autoSize: true,
     });
     chartRef.current = chart;
@@ -414,11 +638,7 @@ function makePriceSeries(
     if (canvasRef.current && candleRef.current) {
       overlayRef.current = new DrawingOverlay(
         canvasRef.current, chart, candleRef.current,
-        {
-          background: "#0d1119", grid: "#151b27", text: "#c3c9d6",
-          crosshair: "#787b86", accent: "#5b8def",
-          up: "#22c58b", down: "#f2495e",
-        },
+        overlayTheme(),
       );
     }
 
@@ -538,57 +758,90 @@ function makePriceSeries(
   }, [base.length]);
 
   /**
-   * One live poll.
-   *
-   * Re-requests a trailing window because that is the only thing a quote endpoint offers, then
-   * MERGES rather than replaces: replacing would reset the series and the account would lose
-   * every bar it has already accounted for. `lastProcessedRef` is what stops a forming bar
-   * from being filled twice — commission and swap would double on every poll otherwise.
+   * The Yahoo window one live poll asks for (30 days of 5-minute bars, clamped to
+   * what the endpoint actually keeps).
    */
-  const pollLive = useCallback(async (): Promise<void> => {
+  const loadYahooWindow = useCallback(async (forSymbol: string): Promise<LoadResult> => {
     if (!feedRef.current) feedRef.current = createFeed();
     const nowSec = Math.floor(Date.now() / 1000);
     const a = availability(5, nowSec - 30 * 86400, nowSec);
+    return feedRef.current.load({
+      symbol: forSymbol,
+      intervalMinutes: 5,
+      from: effectiveFrom(nowSec - 30 * 86400, a),
+    });
+  }, []);
+
+  /**
+   * Merge one live result into the chart and advance the account.
+   *
+   * Shared by the Yahoo and MetaTrader polls — both produce a `LoadResult`, and the
+   * merge/accounting rules must not exist twice.
+   *
+   * Re-requests a trailing window, then MERGES rather than replaces: replacing would
+   * reset the series and the account would lose every bar it has already accounted
+   * for. `lastProcessedRef` is what stops a forming bar from being filled twice —
+   * commission and swap would double on every poll otherwise.
+   */
+  const applyLiveResult = useCallback((askedFor: string, r: LoadResult): void => {
+    /*
+      Discard a response for an instrument the user has already left.
+
+      React state updates are asynchronous and a poll can be in flight across a symbol switch, so
+      the reply for the old pair used to be merged into the new chart: the legend said GBPUSD while
+      the candles were EURUSD, or the two were interleaved. Comparing against the ref (not the
+      closure's `symbolId`) is what makes this correct - the closure captured the value at the time
+      the poll was created, which is precisely the stale one.
+    */
+    if (askedFor !== symbolRef.current) return;
+
+    setFeedStatus(r.status);
+    if (r.series.length === 0) return;
+
+    setBase((prev) => {
+      const merged = mergeSeries(prev, r.series);
+      const added = newBarIndices(prev.time.length, merged.time.length);
+      const i = merged.time.length - 1;
+      const lastTime = merged.time[i]!;
+
+      // Only a bar strictly newer than the last processed one may advance the account.
+      // A forming bar would otherwise be filled at a price that never existed, and the
+      // commission and swap would be charged again on every poll.
+      if (added.length > 0 && lastTime > lastProcessedRef.current) {
+        lastProcessedRef.current = lastTime;
+        session.onBar(
+          {
+            time: lastTime,
+            open: merged.open[i]!,
+            high: merged.high[i]!,
+            low: merged.low[i]!,
+            close: merged.close[i]!,
+            volume: merged.volume[i]!,
+          },
+          i,
+        );
+      }
+      // live shows the newest bar: there is nothing to reveal
+      setRevealed(merged.time.length);
+      return merged;
+    });
+  }, [session]);
+
+  /**
+   * One live poll: the MetaTrader terminal when an account is connected, Yahoo otherwise.
+   * Same contract either way — one `LoadResult` into the one merge path.
+   */
+  const pollLive = useCallback(async (): Promise<void> => {
+    const askedFor = symbolId;
     try {
-      const r = await feedRef.current.load({
-        symbol: symbolId,
-        intervalMinutes: 5,
-        from: effectiveFrom(nowSec - 30 * 86400, a),
-      });
-      setFeedStatus(r.status);
-      if (r.series.length === 0) return;
-
-      setBase((prev) => {
-        const merged = mergeSeries(prev, r.series);
-        const added = newBarIndices(prev.time.length, merged.time.length);
-        const i = merged.time.length - 1;
-        const lastTime = merged.time[i]!;
-
-        // Only a bar strictly newer than the last processed one may advance the account.
-        // A forming bar would otherwise be filled at a price that never existed, and the
-        // commission and swap would be charged again on every poll.
-        if (added.length > 0 && lastTime > lastProcessedRef.current) {
-          lastProcessedRef.current = lastTime;
-          session.onBar(
-            {
-              time: lastTime,
-              open: merged.open[i]!,
-              high: merged.high[i]!,
-              low: merged.low[i]!,
-              close: merged.close[i]!,
-              volume: merged.volume[i]!,
-            },
-            i,
-          );
-        }
-        // live shows the newest bar: there is nothing to reveal
-        setRevealed(merged.time.length);
-        return merged;
-      });
+      const r = mtRef.current
+        ? await pollMtLive(mtSymbolName(askedFor), mtTimeframeLabel(tf.minutes))
+        : await loadYahooWindow(askedFor);
+      applyLiveResult(askedFor, r);
     } catch (e) {
       setStatus(`live poll failed: ${(e as Error).message}`);
     }
-  }, [symbolId, session]);
+  }, [symbolId, tf, loadYahooWindow, applyLiveResult]);
 
   // ------------------------------------------------------------- loading
   /**
@@ -597,9 +850,16 @@ function makePriceSeries(
    * `forSymbol` exists because React state updates are asynchronous: after choosing a new
    * instrument the old `symbolId` is still in scope for this render, so the fetch would request
    * the PREVIOUS symbol and the chart would appear not to change.
+   *
+   * `opts.ignoreOffline` is for the one call site that just turned the network ON: it runs in
+   * the same tick as `setOffline(false)`, so this closure still sees the old value and would
+   * refuse a fetch the user just asked for.
    */
-  const loadLive = useCallback(async (forSymbol?: string): Promise<void> => {
-    if (offline) {
+  const loadLive = useCallback(async (
+    forSymbol?: string,
+    opts?: { ignoreOffline?: boolean },
+  ): Promise<void> => {
+    if (offline && !opts?.ignoreOffline) {
       setStatus("Offline mode is on — import a CSV or turn it off to fetch.");
       return;
     }
@@ -616,7 +876,7 @@ function makePriceSeries(
         // A live fetch replaces the sample so the chart shows real prices.
         setBase(r.series);
         setRevealed(r.series.length);
-        setStatus(`${r.status.message} — ${r.series.length.toLocaleString()} bars`);
+        setStatus(`${r.status.message} — ${latinNum(r.series.length)} bars`);
       } else {
         setStatus(r.status.message);
       }
@@ -644,7 +904,7 @@ function makePriceSeries(
         usable: true,
       });
       setStatus(
-        `Imported ${parsed.candles.length.toLocaleString()} bars from ${name}` +
+        `Imported ${latinNum(parsed.candles.length)} bars from ${name}` +
         (parsed.detectedMinutes ? ` (${parsed.detectedMinutes}m)` : ""),
       );
     } catch (e) {
@@ -674,7 +934,7 @@ function makePriceSeries(
     });
     const audit = auditCandles(candles);
     setStatus(
-      `${candles.length.toLocaleString()} bars from ${label} · ` +
+      `${latinNum(candles.length)} bars from ${label} · ` +
       `${describeSpacing(audit.spacingSeconds)} · ${audit.verdict}`,
     );
   }, []);
@@ -741,10 +1001,13 @@ function makePriceSeries(
       timeWeight: pricePerPx / Math.max(1e-9, secPerPx),
       nextId: () => `dr_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
       // the active tool's saved style: a user who set trend lines to teal gets teal,
-      // and the fallback is the amber this used before
+      // and the fallback is the chart accent
       style: tool
         ? styleFor(toolConfigs, tool)
-        : { color: "#f0b90b", width: 2, style: "solid", opacity: 1, fill: false, fillOpacity: 0.12 },
+        : {
+          color: CHART_THEME.accent, width: 2, style: "solid", opacity: 1,
+          fill: false, fillOpacity: 0.12,
+        },
       rightEdge: view.length > 0 ? view.time[view.length - 1]! + 3600 : p.time,
     };
   }, [view, tool, toolConfigs]);
@@ -1031,9 +1294,13 @@ function makePriceSeries(
    *
    * Started only in live mode and cleared on unmount or mode change. A leaked timer would keep
    * polling after the user switched to replay, appending today's bars onto a 2019 chart.
+   * Cadence follows the source: MetaTrader serves the terminal locally (5s on M1–M5,
+   * 15s above); Yahoo is a rate-limited public endpoint (modeState.pollSeconds).
    */
   useEffect(() => {
-    if (sessionMode !== "live") {
+    // Offline stops the timer, not just the fetches: a timer that kept running would
+    // append live bars onto a chart the user has declared offline.
+    if (sessionMode !== "live" || offline) {
       if (liveTimerRef.current !== null) {
         window.clearInterval(liveTimerRef.current);
         liveTimerRef.current = null;
@@ -1041,13 +1308,16 @@ function makePriceSeries(
       return;
     }
     void pollLive();
-    const id = window.setInterval(() => { void pollLive(); }, modeState.pollSeconds * 1000);
+    const seconds = mtRef.current
+      ? mtPollSeconds(mtTimeframeLabel(tf.minutes))
+      : modeState.pollSeconds;
+    const id = window.setInterval(() => { void pollLive(); }, seconds * 1000);
     liveTimerRef.current = id;
     return () => {
       window.clearInterval(id);
       liveTimerRef.current = null;
     };
-  }, [sessionMode, modeState.pollSeconds, pollLive]);
+  }, [sessionMode, offline, modeState.pollSeconds, tf, pollLive]);
 
   /**
    * ATR series for ATR trailing, computed once per loaded series.
@@ -1076,6 +1346,78 @@ function makePriceSeries(
 
   // ------------------------------------------------ persistence: drawings
   const workspace = workspaceKey(symbolId, tf.label);
+
+  /**
+   * Open a FRESH paper account at the configured (or newly given) starting balance.
+   *
+   * Open positions and pending orders are discarded — the confirm dialog says so —
+   * but the journal is not touched: closed trades are history, and Soft4FX keeps the
+   * report. The stored live-session restore for this workspace is cleared as well,
+   * so a restart cannot resurrect the discarded account over the fresh one.
+   */
+  const resetPaperAccount = useCallback((over?: {
+    startingBalance?: number; leverage?: number;
+  }): void => {
+    const next: PaperAccountSettings = { ...paperAccountRef.current };
+    if (over?.startingBalance !== undefined && over.startingBalance > 0) {
+      next.startingBalance = over.startingBalance;
+    }
+    if (over?.leverage !== undefined && over.leverage >= 1) {
+      next.leverage = Math.floor(over.leverage);
+    }
+    paperAccountRef.current = next;
+    setPaperAccount(next);
+    setSession(new TradingSession(
+      sessionSymbol(symbolId),
+      paperEngineAccount(next),
+      paperCostsRef.current,
+    ));
+    const api = (globalThis as unknown as { fxlab?: {
+      setSetting?: (key: string, value: string) => Promise<{ ok: boolean }>;
+      clearLiveSession?: (w: string) => Promise<{ ok: boolean }>;
+    } }).fxlab;
+    void api?.setSetting?.("paper_account", JSON.stringify(next));
+    void api?.clearLiveSession?.(workspace);
+  }, [symbolId, workspace]);
+
+  /**
+   * Save and apply cost overrides. The session refuses while anything is open —
+   * a spread change would misprice live stops — and the refusal is returned so the
+   * card can show it verbatim.
+   */
+  const applyPaperCosts = useCallback((next: PaperCosts): {
+    ok: boolean; message?: string;
+  } => {
+    costsStoredRef.current = true;
+    paperCostsRef.current = next;
+    setPaperCosts(next);
+    const api = (globalThis as unknown as { fxlab?: {
+      setSetting?: (key: string, value: string) => Promise<{ ok: boolean }>;
+    } }).fxlab;
+    void api?.setSetting?.("paper_costs", JSON.stringify(next));
+    return session.setCosts(next);
+  }, [session]);
+
+  /**
+   * Save and apply the session loss/profit limits. setLimits cannot refuse (the
+   * limits read live money, they do not reprice anything), so there is no verdict
+   * to surface — the card's live banner shows the state instead.
+   */
+  const applyPaperLimits = useCallback((next: PaperLimits): void => {
+    paperLimitsRef.current = next;
+    setPaperLimits(next);
+    session.setLimits(next);
+    const api = (globalThis as unknown as { fxlab?: {
+      setSetting?: (key: string, value: string) => Promise<{ ok: boolean }>;
+    } }).fxlab;
+    void api?.setSetting?.("paper_limits", JSON.stringify(next));
+  }, [session]);
+
+  /** The strategy panel backtests against the same paper account the session runs on. */
+  const strategyAccount = useMemo(
+    () => paperEngineAccount(paperAccount),
+    [paperAccount],
+  );
   /**
    * True while a load is settling. Without it the save effect fires immediately
    * after hydration and writes the EMPTY pre-load collection back over the stored
@@ -1173,6 +1515,8 @@ function makePriceSeries(
       }
 
       session.importState(state);
+      // the resumed account beats the persisted paper-account defaults at boot
+      restoreAppliedRef.current = true;
       // Skip the bar the session was saved at: the restored position was already exposed to
       // it, and re-testing its stop against that bar closes it the moment it comes back.
       lastBarRef.current = session.restoredThrough;
@@ -1276,11 +1620,7 @@ function makePriceSeries(
 
     overlayRef.current = new DrawingOverlay(
       canvasRef.current, chart, series,
-      {
-        background: "#0d1119", grid: "#151b27", text: "#c3c9d6",
-        crosshair: "#787b86", accent: "#5b8def",
-        up: "#22c58b", down: "#f2495e",
-      },
+      overlayTheme(),
     );
     overlayRef.current.queue(
       drawingsRef.current.get(), interRef.current, view.length, null, null,
@@ -1296,10 +1636,24 @@ function makePriceSeries(
     chart.applyOptions({
       rightPriceScale: {
         mode: logScale ? 1 : 0,
-        borderColor: "#232b3b",
+        borderColor: CHART_THEME.axisBorder,
       },
     });
   }, [logScale]);
+
+  /**
+   * The toolbar's quick timeframe buttons: the pinned favourites, in pin order, that
+   * exist among the known frames. Anything a favourite names but the menu cannot build
+   * (a custom label that is no longer selected) simply does not get a quick button.
+   */
+  const quickFrames = useMemo(
+    () => tfFavourites
+      .map((label) =>
+        [...TIMEFRAMES, ...(TIMEFRAMES.some((f) => f.label === tf.label) ? [] : [tf])]
+          .find((f) => f.label === label))
+      .filter((f): f is Timeframe => f !== undefined),
+    [tfFavourites, tf],
+  );
 
   const currentTime = view.length > 0 ? view.time[view.time.length - 1]! : 0;
   const lastBar = view.length > 0
@@ -1310,192 +1664,222 @@ function makePriceSeries(
     : null;
 
   /**
-   * Start a session from the start screen.
+   * Path 1 of the login overlay: enter LIVE mode on the MetaTrader feed.
    *
-   * Live and replay differ in exactly two ways: where the bars come from, and whether the
-   * clock advances on its own. Everything downstream — account engine, trade panel, journal —
-   * is the same code, which is the point.
+   * One full poll seeds the chart, then the live timer (keyed on sessionMode, which
+   * flips here) keeps it current from the terminal. If the seed poll fails the mode
+   * stays null, so the overlay stays up and the other paths remain reachable.
    */
-  const startSession = async (choice: StartChoice): Promise<void> => {
-    setSessionMode(choice.mode);
-    setModeState((m) => ({ ...m, mode: choice.mode }));
-    setSymbolId(choice.symbol);
-    setOffline(false);
+  const enterMtLive = async (info: MtAccountInfo): Promise<void> => {
+    connectMt(info);
     setLoading(true);
     setStatus("");
-
     try {
-      if (!feedRef.current) feedRef.current = createFeed();
-
-      if (choice.mode === "live") {
-        const nowSec = Math.floor(Date.now() / 1000);
-        const a = availability(choice.intervalMinutes, nowSec - 30 * 86400, nowSec);
-        const r = await feedRef.current.load({
-          symbol: choice.symbol,
-          intervalMinutes: choice.intervalMinutes,
-          from: effectiveFrom(nowSec - 30 * 86400, a),
-        });
-        setFeedStatus(r.status);
-        if (r.series.length === 0) {
-          setStatus(r.status.message);
-          setSessionMode(null);
-          return;
-        }
-        setBase(r.series);
-        setRevealed(r.series.length);
-        // the account starts from the newest CLOSED bar, not the forming one
-        lastProcessedRef.current = r.series.time[r.series.time.length - 1]!;
-        setStatus(`${r.status.message} — ${r.series.length.toLocaleString()} bars · ${describeMode("live")}`);
-      } else {
-        const nowSec = Math.floor(Date.now() / 1000);
-        const a = availability(choice.intervalMinutes, choice.from ?? 0, nowSec);
-        const r = await feedRef.current.load({
-          symbol: choice.symbol,
-          intervalMinutes: choice.intervalMinutes,
-          from: effectiveFrom(choice.from ?? 0, a),
-        });
-        setFeedStatus(r.status);
-        if (r.series.length === 0) {
-          setStatus(r.status.message);
-          setSessionMode(null);
-          return;
-        }
-        setBase(r.series);
-        // replay reveals a leading window so there is context, then steps forward
-        const lead = Math.min(200, Math.max(20, Math.floor(r.series.length * 0.1)));
-        setRevealed(lead);
-        lastProcessedRef.current = 0;
-        setStatus(`${r.status.message} — ${r.series.length.toLocaleString()} bars · replay`);
-      }
+      const r = await pollMtLive(mtSymbolName(symbolRef.current), "M5");
+      setSessionMode("live");
+      setModeState((m) => ({ ...m, mode: "live" }));
+      setOffline(false);
+      setFeedStatus(r.status);
+      setBase(r.series);
+      setRevealed(r.series.length);
+      // the account starts from the newest CLOSED bar, not the forming one
+      lastProcessedRef.current = r.series.time[r.series.time.length - 1] ?? 0;
+      setStatus(
+        `${latinNum(r.series.length)} bars from MetaTrader · ` +
+        `${info.server} · #${info.account}` +
+        (info.hidden ? ` · ${t("login.hidden")}` : "") +
+        ` · ${describeMode("live")}`,
+      );
     } catch (e) {
-      setStatus(`load failed: ${(e as Error).message}`);
-      setSessionMode(null);
+      // the terminal connected but served no bars: undo the source switch so Yahoo
+      // remains the live feed and the overlay keeps offering the other paths
+      connectMt(null);
+      setStatus(`MetaTrader load failed: ${(e as Error).message}`);
     } finally {
       setLoading(false);
     }
   };
 
-  // The start screen owns the whole window until a mode is chosen: there is no meaningful
-  // chart to show before the user has said what they want to trade.
-  if (sessionMode === null) {
-    return (
-      <StartScreen
-        symbols={LIVE_SYMBOLS.map((s) => ({ id: s.id, label: s.label }))}
-        onStart={(c) => void startSession(c)}
-        onImport={() => {
-          // Open the picker directly. The previous version only switched to the Data tab and
-          // printed "Import a CSV from the Data panel", which is the app asking the user to do
-          // what the button they just pressed was supposed to do.
-          //
-          // This goes through main's own picker rather than a browser <input type="file">, because
-          // a .bi5 file stores only offsets from midnight and its date comes from the PATH — which
-          // a browser file input cannot give. ZIPs and the 60 MB cap are handled there too.
-          void (async () => {
-            const api = (globalThis as unknown as {
-              fxlab?: { pickDataFile?: () => Promise<{
-                ok: boolean; name?: string; text?: string; message?: string;
-                candles?: Array<{ time: number; open: number; high: number; low: number; close: number; volume: number }>;
-              }> };
-            }).fxlab;
-            if (!api?.pickDataFile) {
-              setStatus("file picking is not available in this build");
-              return;
-            }
-            const res = await api.pickDataFile();
-            if (!res.ok) {
-              // main's message explains WHY (bad path, oversized file, no CSV in the archive),
-              // so it is shown rather than replaced with a generic failure
-              if (res.message) setStatus(res.message);
-              return;
-            }
-            setSessionMode("replay");
-            setRail("data");
-            // main decodes a .bi5 itself (its date lives in the path), so candles may arrive
-            // ready to use; anything else arrives as text for the renderer's own parser
-            if (res.candles && res.candles.length > 0 && res.name) {
-              loadCandles(res.name, res.candles);
-              return;
-            }
-            if (res.text && res.name) {
-              importCsv(res.text, res.name);
-              return;
-            }
-            setStatus(`nothing usable in ${res.name ?? "that file"}`);
-          })();
-        }}
-      />
-    );
-  }
+  /**
+   * Path 2 of the login overlay: offline replay over what is already loaded — the
+   * sample series on a first run, or whatever a previous session left on the chart.
+   */
+  const enterOffline = useCallback((): void => {
+    setSessionMode("replay");
+    setModeState((m) => ({ ...m, mode: "replay" }));
+    setOffline(true);
+    setRevealed((r) => Math.max(r, Math.min(2_000, base.length)));
+    setFeedStatus({
+      state: "offline", mode: "offline", servedBy: "cache", fromCache: true,
+      barCount: base.length,
+      message: "Offline — sample data",
+      usable: true,
+    });
+    setStatus("Offline replay — sample data loaded");
+  }, [base.length]);
+
+  /**
+   * Bars from the local MT store (login overlay or downloader): into replay mode
+   * through the one load path, so chart, account and audit all agree on the source.
+   */
+  const loadStoredMt = useCallback((label: string, candles: Candle[]): void => {
+    setSessionMode("replay");
+    setModeState((m) => ({ ...m, mode: "replay" }));
+    setOffline(true);
+    loadCandles(label, candles);
+  }, [loadCandles]);
+
+  /** Path 3 of the login overlay: drop into offline mode with the Download tab open. */
+  const openDownloadTab = useCallback((): void => {
+    setSessionMode("replay");
+    setModeState((m) => ({ ...m, mode: "replay" }));
+    setOffline(true);
+    setRail("download");
+    setPanelOpen(true);
+  }, []);
+
+  /**
+   * Main's file picker, from the overlay's offline card.
+   *
+   * This goes through main's own picker rather than a browser <input type="file">, because
+   * a .bi5 file stores only offsets from midnight and its date comes from the PATH — which
+   * a browser file input cannot give. ZIPs and the 60 MB cap are handled there too.
+   */
+  const importPickedFile = useCallback((): void => {
+    void (async () => {
+      const api = (globalThis as unknown as {
+        fxlab?: { pickDataFile?: () => Promise<{
+          ok: boolean; name?: string; text?: string; message?: string;
+          candles?: Array<{ time: number; open: number; high: number; low: number; close: number; volume: number }>;
+        }> };
+      }).fxlab;
+      if (!api?.pickDataFile) {
+        setStatus("file picking is not available in this build");
+        return;
+      }
+      const res = await api.pickDataFile();
+      if (!res.ok) {
+        // main's message explains WHY (bad path, oversized file, no CSV in the archive),
+        // so it is shown rather than replaced with a generic failure
+        if (res.message) setStatus(res.message);
+        return;
+      }
+      setSessionMode("replay");
+      setModeState((m) => ({ ...m, mode: "replay" }));
+      setOffline(true);
+      setRail("data");
+      // main decodes a .bi5 itself (its date lives in the path), so candles may arrive
+      // ready to use; anything else arrives as text for the renderer's own parser
+      if (res.candles && res.candles.length > 0 && res.name) {
+        loadCandles(res.name, res.candles);
+        return;
+      }
+      if (res.text && res.name) {
+        importCsv(res.text, res.name);
+        return;
+      }
+      setStatus(`nothing usable in ${res.name ?? "that file"}`);
+    })();
+  }, [loadCandles, importCsv]);
 
   return (
     <div className="app">
       <header className="toolbar">
-        <strong className="brand">{t("app.name")}</strong>
-        <span className={offline ? "badge off" : "badge on"}>
-          {offline ? t("app.offline") : t("app.live")}
-        </span>
-
+        {/* [symbol pill] — the terminal's primary control, so it leads */}
         <SymbolMenu
           symbols={LIVE_SYMBOLS.map((s) => ({ id: s.id, label: s.label }))}
           current={symbolId}
-          onChoose={(id) => { setSymbolId(id); void loadLive(id); }}
+          onChoose={(id) => { chooseSymbol(id); void loadLive(id); }}
         />
 
-        <TimeframeMenu
-          current={tf}
-          frames={[...TIMEFRAMES, ...(TIMEFRAMES.some((f) => f.label === tf.label) ? [] : [tf])]}
-          baseFrame={baseFrame ?? tf}
-          favourites={tfFavourites}
-          onToggleFavourite={(label) =>
-            setTfFavourites((f) => (f.includes(label) ? f.filter((x) => x !== label) : [...f, label]))}
-          onChoose={(f) => setTf(f)}
-          onReject={(f) => setStatus(explainUnavailable(baseFrame ?? tf, f))}
-          onCustom={(label) => {
-            const found = parseTimeframeLabel(label);
-            if (!found) { setStatus(`Invalid timeframe: ${label}`); return false; }
-            if (!canAggregate(baseFrame ?? tf, found)) {
-              setStatus(explainUnavailable(baseFrame ?? tf, found));
-              return false;
-            }
-            setTf(found);
-            return true;
-          }}
-        />
+        {/* [TF quick row] pinned frames in one click, "⋯" for the full menu, and a
+            custom-frame box — everything the old labelled toolbar rows did, in less space */}
+        <div className="tf-quick" data-panel="tf-quick">
+          {quickFrames.map((f) => {
+            const usable = canAggregate(baseFrame ?? tf, f);
+            return (
+              <button
+                key={f.label}
+                className={f.label === tf.label ? "tf-q on num" : "tf-q num"}
+                data-tf-quick={f.label}
+                disabled={!usable}
+                title={usable ? f.label : explainUnavailable(baseFrame ?? tf, f)}
+                onClick={() => setTf(f)}
+              >
+                {f.label}
+              </button>
+            );
+          })}
 
+          <TimeframeMenu
+            compactIcon
+            current={tf}
+            frames={[...TIMEFRAMES, ...(TIMEFRAMES.some((f) => f.label === tf.label) ? [] : [tf])]}
+            baseFrame={baseFrame ?? tf}
+            favourites={tfFavourites}
+            onToggleFavourite={(label) =>
+              setTfFavourites((f) => (f.includes(label) ? f.filter((x) => x !== label) : [...f, label]))}
+            onChoose={(f) => setTf(f)}
+            onReject={(f) => setStatus(explainUnavailable(baseFrame ?? tf, f))}
+            onCustom={(label) => {
+              const found = parseTimeframeLabel(label);
+              if (!found) { setStatus(`Invalid timeframe: ${label}`); return false; }
+              if (!canAggregate(baseFrame ?? tf, found)) {
+                setStatus(explainUnavailable(baseFrame ?? tf, found));
+                return false;
+              }
+              setTf(found);
+              return true;
+            }}
+          />
 
-        <label title={t("app.customHint")}>
-          {t("app.custom")}{" "}
           <input
-            className="w-16" value={custom} placeholder="7"
+            className="custom-tf-input"
+            value={custom}
+            placeholder="7"
             data-field="custom-tf"
+            dir="ltr"
+            title={t("app.customHint")}
             onChange={(e) => setCustom(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter") applyCustom(); }}
           />
-        </label>
+        </div>
 
-        <label>
-          {t("app.chartType")}{" "}
-          <select
-            data-field="chart-type"
-            value={chartType}
-            onChange={(e) => setChartType(e.target.value as typeof chartType)}
-          >
-            <option value="candles">{t("app.candles")}</option>
-            <option value="bars">{t("app.bars")}</option>
-            <option value="line">{t("app.line")}</option>
-            <option value="area">{t("app.area")}</option>
-          </select>
-        </label>
+        {/* [chart type + log scale] one icon menu instead of two labelled rows */}
+        <ChartTypeMenu
+          chartType={chartType}
+          logScale={logScale}
+          onChartType={setChartType}
+          onLogScale={setLogScale}
+        />
 
-        <label title={t("app.logScaleHint")}>
-          <input
-            data-field="log-scale"
-            type="checkbox"
-            checked={logScale}
-            onChange={(e) => setLogScale(e.target.checked)}
-          />{" "}
-          {t("app.logScale")}
-        </label>
+        {/* [indicators] focuses the sidebar's indicators tab */}
+        <button
+          className="tb-btn"
+          data-action="open-indicators"
+          title={t("tab.indicators")}
+          onClick={() => { setRail("indicators"); setPanelOpen(true); }}
+        >
+          ƒx
+        </button>
+
+        {/* A readout, not a control: the tool is chosen in the rail. */}
+        {tool && <span className="active-tool">{TOOL_LABELS[tool] ?? tool}</span>}
+
+        <div className="grow" />
+
+        {/* [LIVE/OFFLINE badge + feed state] the badge names the SOURCE, because
+            "live" from a local terminal and "live" from a public endpoint are
+            different promises */}
+        <span
+          className={offline ? "badge off" : "badge on"}
+          data-field="feed-badge"
+          data-feed={mtAccount ? "mt" : feedStatus?.state ?? "off"}
+        >
+          {offline
+            ? t("app.offline")
+            : mtAccount ? t("app.liveMt") : t("app.liveYahoo")}
+        </span>
 
         {/* The picker takes the chart's own time as its reference, so a replay of last July shows
             the DST offsets that were in force then — not today's. */}
@@ -1505,39 +1889,21 @@ function makePriceSeries(
           onChange={setZone}
         />
 
-        <button onClick={() => setPlaying((p) => !p)}>
-          {playing ? t("app.pause") : t("app.play")}
-        </button>
-        <button onClick={() => setRevealed((r) => Math.min(base.length, r + 1))}>
-          {t("app.step")}
-        </button>
-
-        <label>
-          {t("app.language")}{" "}
-          <select
-            data-field="lang"
-            value={lang}
-            onChange={(e) => setLang(e.target.value as typeof lang)}
-          >
-            {LOCALES.map((l) => (
-              <option key={l.lang} value={l.lang}>{l.label}</option>
-            ))}
-          </select>
-        </label>
-
-        <label>
-          {t("app.speed")}{" "}
-          <select value={speed} onChange={(e) => setSpeed(Number(e.target.value))}>
-            {SPEEDS.map((s) => <option key={s} value={s}>{s}x</option>)}
-          </select>
-        </label>
-
-        <div className="grow" />
+        {/* [language toggle] */}
+        <select
+          data-field="lang"
+          value={lang}
+          title={t("app.language")}
+          onChange={(e) => setLang(e.target.value as typeof lang)}
+        >
+          {LOCALES.map((l) => (
+            <option key={l.lang} value={l.lang}>{l.label}</option>
+          ))}
+        </select>
 
         {/*
-          Panel toggle. The panel was permanently on screen with no way to close it, so a user who
-          wants the full chart width had none. F2 is the shortcut TradingView uses for the same
-          action, and it is advertised in the title so it can be discovered.
+          [sidebar toggle] F2 is the shortcut TradingView uses for the same action, and it is
+          advertised in the title so it can be discovered.
         */}
         <button
           className={panelOpen ? "panel-toggle on" : "panel-toggle"}
@@ -1546,12 +1912,19 @@ function makePriceSeries(
           title={t("app.panelToggle")}
           onClick={() => setPanelOpen((v) => !v)}
         >
-          {panelOpen ? "▤" : "▢"}
+          ▤
         </button>
 
-        {/* A readout, not a control: the tool is chosen in the rail. Showing the
-            active tool name here removes any doubt about what a click will draw. */}
-        {tool && <span className="active-tool">{TOOL_LABELS[tool] ?? tool}</span>}
+        {/* [dock toggle] the bottom panel stays closed until asked for */}
+        <button
+          className={dockOpen ? "panel-toggle on" : "panel-toggle"}
+          data-action="dock-toggle"
+          aria-pressed={dockOpen}
+          title={t("app.dockToggle")}
+          onClick={() => setDockOpen((v) => !v)}
+        >
+          ▦
+        </button>
       </header>
 
       <DrawingToolbar
@@ -1633,223 +2006,398 @@ function makePriceSeries(
           </span>
         </div>
         {loading && <div className="loading">loading…</div>}
+
+        {/*
+          Floating replay bar, pinned bottom-centre OVER the chart — replay controls
+          belong where the replay happens, not in the toolbar. Everything here re-slots
+          state the app already owned (playing/speed/revealed); the engine is untouched.
+          Keyboard shortcuts (Space, ArrowRight) are unchanged.
+        */}
+        {sessionMode === "replay" && (
+          <div className="replay-bar" data-panel="replay-bar">
+            <button
+              data-action="replay-to-start"
+              title={t("replay.toStart")}
+              onClick={() => setRevealed(Math.min(200, base.length))}
+            >
+              ⏮
+            </button>
+            <button
+              className={playing ? "replay-play on" : "replay-play"}
+              data-action="replay-play"
+              title={playing ? t("app.pause") : t("app.play")}
+              onClick={() => setPlaying((p) => !p)}
+            >
+              {playing ? "⏸" : "▶"}
+            </button>
+            <button
+              data-action="replay-step"
+              title={t("app.step")}
+              onClick={() => setRevealed((r) => Math.min(base.length, r + 1))}
+            >
+              ⏭
+            </button>
+
+            <span className="replay-sep" />
+
+            <select
+              className="replay-speed num"
+              data-field="replay-speed"
+              title={t("app.speed")}
+              value={speed}
+              onChange={(e) => setSpeed(Number(e.target.value))}
+            >
+              {SPEEDS.map((s) => <option key={s} value={s}>{s}x</option>)}
+            </select>
+
+            <input
+              className="slider replay-slider"
+              type="range"
+              min={10}
+              max={base.length}
+              value={Math.min(Math.max(revealed, 10), base.length)}
+              onChange={(e) => setRevealed(Number(e.target.value))}
+            />
+
+            <span className="num replay-pos" data-kv="replay-pos">
+              {t("replay.bars", {
+                revealed: latinNum(revealed),
+                base: latinNum(base.length),
+              })}
+            </span>
+            <span className="num replay-clock" data-kv="replay-clock" title={t("replay.clock")}>
+              {currentTime ? formatDateTime(currentTime, zone) : "—"}
+            </span>
+          </div>
+        )}
+
+        {/* Per-tool settings: a floating dialog over the chart, opened from the rail's
+            gear exactly as before — it used to render inside the sidebar panel. */}
+        {settingsFor && (
+          <div className="tool-settings-float">
+            <ToolSettings
+              kind={settingsFor}
+              configs={toolConfigs}
+              onChange={applyToolConfigs}
+              onClose={() => setSettingsFor(null)}
+              allKinds={ALL_KINDS}
+            />
+          </div>
+        )}
       </div>
 
       <aside className="panel" data-panel-open={panelOpen ? "yes" : "no"}>
-        <nav className="rail-tabs">
-          {(["data", "download", "broker", "trade", "news", "sessions", "equity", "indicators", "strategy", "journal", "symbols"] as RailTab[]).map((tabId) => (
+        {/* header: the app name plus the honest state of whatever feed is connected.
+            A connected MT account reads "server · #account · hidden terminal". */}
+        <header className="side-head">
+          <strong className="brand">{t("app.name")}</strong>
+          <span
+            className="side-conn num"
+            data-note="connection"
+            title={mtAccount ? mtAccount.company : undefined}
+          >
+            {mtAccount
+              ? `${mtAccount.server} · #${mtAccount.account}` +
+                (mtAccount.hidden ? ` · ${t("login.hidden")}` : "")
+              : feedStatus ? feedStatus.state : offline ? t("app.offline") : t("app.live")}
+          </span>
+        </header>
+
+        <div className="side-body">
+          {/* compact vertical tab strip: the trading surfaces first, the plumbing below */}
+          <nav className="rail-tabs vert">
+            {(["trade", "data", "download", "news", "sessions", "symbols"] as RailTab[]).map((tabId) => (
+              <button
+                key={tabId}
+                data-tab={tabId}
+                className={rail === tabId ? "rail-tab active" : "rail-tab"}
+                onClick={() => setRail(tabId)}
+              >
+                {t(`tab.${tabId}`)}
+              </button>
+            ))}
+            <div className="side-strip-sep" />
+            {(["indicators", "broker"] as RailTab[]).map((tabId) => (
+              <button
+                key={tabId}
+                data-tab={tabId}
+                className={rail === tabId ? "rail-tab active" : "rail-tab"}
+                onClick={() => setRail(tabId)}
+              >
+                {t(`tab.${tabId}`)}
+              </button>
+            ))}
+          </nav>
+
+          <div className="side-content">
+            {rail === "trade" && (
+              <>
+                {/* the money-management surface leads: the account the fills are
+                    priced against, before the ticket that spends it */}
+                <PaperAccountCard
+                  session={session}
+                  account={paperAccount}
+                  costs={paperCosts}
+                  limits={paperLimits}
+                  onApplyAccount={resetPaperAccount}
+                  onApplyCosts={applyPaperCosts}
+                  onApplyLimits={applyPaperLimits}
+                />
+                <TradePanel
+                  session={session}
+                  blackout={blackout}
+                  price={currentPrice}
+                  contractSize={session.specRef.contractSize}
+                  lotStep={session.specRef.lotStep}
+                  minLot={session.specRef.lotMin}
+                  maxLot={session.specRef.lotMax}
+                  spec={session.specRef}
+                />
+              </>
+            )}
+
+            {rail === "data" && (
+              <DataPanel
+                status={feedStatus}
+                offline={offline}
+                symbol={symbolId}
+                symbols={LIVE_SYMBOLS.map((s) => ({ id: s.id, label: s.label }))}
+                onToggleOffline={(v) => {
+                  setOffline(v);
+                  if (v) {
+                    // going offline pauses the clock: back to replay semantics, where
+                    // bars advance only when the user steps them
+                    if (sessionMode === "live") {
+                      setSessionMode("replay");
+                      setModeState((m) => ({ ...m, mode: "replay" }));
+                      setPlaying(false);
+                    }
+                  } else if (sessionMode !== "live") {
+                    // Turning the network on IS choosing live: the poll timer is keyed on
+                    // sessionMode, and without flipping it a "live" reload would be a
+                    // one-shot fetch that never updates again.
+                    setSessionMode("live");
+                    setModeState((m) => ({ ...m, mode: "live" }));
+                    void loadLive(undefined, { ignoreOffline: true });
+                  }
+                }}
+                onSymbol={chooseSymbol}
+                onReload={() => void loadLive()}
+                onImport={importCsv}
+              />
+            )}
+
+            {rail === "download" && (
+              <DownloaderPanel
+                symbols={LIVE_SYMBOLS.map((s) => ({ id: s.id, label: s.label }))}
+                mtServer={mtAccount?.server ?? null}
+                onStatus={setStatus}
+                onLoad={(sym, candles) => loadCandles(`${sym} (downloaded)`, candles)}
+                onMtLoad={loadStoredMt}
+                onImportFile={(name, text) => {
+                  const r = parseText(name, text);
+                  if (r.candles.length === 0) {
+                    setStatus(
+                      `No usable bars in ${name}` +
+                      (r.skipped > 0 ? ` — ${r.skipped} rows rejected` : ""),
+                    );
+                    return;
+                  }
+                  loadCandles(name, r.candles);
+                  if (r.skipped > 0) {
+                    setStatus(
+                      `${latinNum(r.candles.length)} bars from ${name} · ` +
+                      `${r.skipped} rows skipped`,
+                    );
+                  }
+                }}
+              />
+            )}
+
+            {rail === "news" && (
+              <NewsPanel
+                currency={session.symbol.startsWith("XAU") ? "USD" : session.symbol.slice(0, 3)}
+                now={replayTime}
+                onEvents={setCalendar}
+                onBlackout={setBlackout}
+              />
+            )}
+
+            {rail === "sessions" && (
+              <SessionsPanel
+                show={showSessions}
+                onShow={setShowSessions}
+                active={activeSessions}
+                onActive={setActiveSessions}
+                trades={journalEntries}
+              />
+            )}
+
+            {rail === "symbols" && <SymbolsPanel />}
+
+            {rail === "broker" && (
+              <BrokerPanel
+                onStatus={setStatus}
+                onLoad={(label, candles) => loadCandles(label, candles)}
+              />
+            )}
+
+            {rail === "indicators" && (
+              <>
+                <h3>Indicators</h3>
+                <select
+                  value=""
+                  onChange={(e) => {
+                    const kind = e.target.value as IndicatorKind;
+                    if (!kind) return;
+                    const period = kind === "RSI" ? 14 : kind === "CCI" ? 20 : kind === "ADX" ? 14 : 20;
+                    setIndicators((l) => [...l, {
+                      id: Date.now(), kind, period, color: INDICATOR_COLORS[kind],
+                    }]);
+                  }}
+                >
+                  <option value="">add indicator…</option>
+                  {(["SMA", "EMA", "BB", "RSI", "ADX", "CCI", "VWAP", "SUPERTREND"] as IndicatorKind[])
+                    .map((k) => <option key={k} value={k}>{k}</option>)}
+                </select>
+                <ul className="ind-list">
+                  {indicators.map((ind) => (
+                    <li key={ind.id}>
+                      <span className="dot" style={{ background: ind.color }} />
+                      <b>{ind.kind}</b>
+                      <input
+                        className="mini-num"
+                        data-field={`period-${ind.id}`}
+                        value={String(ind.period)}
+                        onChange={(e) => {
+                          const n = Number(e.target.value);
+                          // Guard the period here rather than in computeIndicator: a period of
+                          // 0 or NaN makes every indicator return NaN, which looks like a broken
+                          // chart rather than a bad input.
+                          if (!Number.isFinite(n) || n < 1) return;
+                          setIndicators((l) =>
+                            l.map((x) => (x.id === ind.id ? { ...x, period: Math.floor(n) } : x)),
+                          );
+                        }}
+                        inputMode="numeric"
+                        title={t("ind.period")}
+                      />
+                      <button
+                        className="mini"
+                        data-action={`remove-${ind.id}`}
+                        onClick={() => setIndicators((l) => l.filter((x) => x.id !== ind.id))}
+                        title={t("ind.remove")}
+                      >✕</button>
+                    </li>
+                  ))}
+                </ul>
+                {indicators.length === 0 && <p className="msg">{t("ind.empty")}</p>}
+                <p className="msg" data-kv="ind-count">
+                  {t("ind.count")}: {indicators.length}
+                </p>
+              </>
+            )}
+
+            {dragMessage && <p className="status status-warn">{dragMessage}</p>}
+            {sessionNotice && (
+              <p className="status status-info">
+                {sessionNotice}
+                <button
+                  className="status-dismiss"
+                  onClick={() => {
+                    setSessionNotice("");
+                    const api = (globalThis as unknown as {
+                      fxlab?: { clearLiveSession?: (w: string) => Promise<{ ok: boolean }> };
+                    }).fxlab;
+                    void api?.clearLiveSession?.(workspace);
+                  }}
+                  title="Start a clean session"
+                >
+                  ✕
+                </button>
+              </p>
+            )}
+            {status && <p className="status">{status}</p>}
+
+            <footer className="credit">Charting by Lightweight Charts (Apache-2.0)</footer>
+          </div>
+        </div>
+      </aside>
+
+      {/*
+        Bottom dock: the tables and analysis that used to be squeezed into the sidebar.
+        Underline tabs; each tab's content renders only while active, so the journal's
+        poller and the strategy panel cost nothing while hidden. The dock itself is
+        collapsed by default — the chart is the product, the tables are reference.
+      */}
+      <section className="dock" data-panel="dock" data-dock-open={dockOpen ? "yes" : "no"}>
+        <nav className="dock-tabs">
+          {(["positions", "history", "strategy", "journal", "equity"] as DockTab[]).map((tabId) => (
             <button
               key={tabId}
               data-tab={tabId}
-              className={rail === tabId ? "rail-tab active" : "rail-tab"}
-              onClick={() => setRail(tabId)}
+              className={dockOpen && dockTab === tabId ? "dock-tab active" : "dock-tab"}
+              onClick={() => {
+                setDockTab(tabId);
+                setDockOpen(true);
+              }}
             >
               {t(`tab.${tabId}`)}
             </button>
           ))}
         </nav>
 
-        {rail === "download" && (
-          <DownloaderPanel
-            symbols={LIVE_SYMBOLS.map((s) => ({ id: s.id, label: s.label }))}
-            onStatus={setStatus}
-            onLoad={(sym, candles) => loadCandles(`${sym} (downloaded)`, candles)}
-            onImportFile={(name, text) => {
-              const r = parseText(name, text);
-              if (r.candles.length === 0) {
-                setStatus(
-                  `No usable bars in ${name}` +
-                  (r.skipped > 0 ? ` — ${r.skipped} rows rejected` : ""),
-                );
-                return;
-              }
-              loadCandles(name, r.candles);
-              if (r.skipped > 0) {
-                setStatus(
-                  `${r.candles.length.toLocaleString()} bars from ${name} · ` +
-                  `${r.skipped} rows skipped`,
-                );
-              }
-            }}
-          />
-        )}
-
-        {rail === "broker" && (
-          <BrokerPanel
-            onStatus={setStatus}
-            onLoad={(label, candles) => loadCandles(label, candles)}
-          />
-        )}
-
-        {rail === "data" && (
-          <>
-            <DataPanel
-              status={feedStatus}
-              offline={offline}
-              symbol={symbolId}
-              symbols={LIVE_SYMBOLS.map((s) => ({ id: s.id, label: s.label }))}
-              onToggleOffline={setOffline}
-              onSymbol={setSymbolId}
-              onReload={() => void loadLive()}
-              onImport={importCsv}
+        <div className="dock-body">
+          {dockOpen && dockTab === "positions" && (
+            <PositionsOrdersTab
+              session={session}
+              price={currentPrice}
+              minLot={session.specRef.lotMin}
+              lotStep={session.specRef.lotStep}
             />
-            <h3>Replay</h3>
-            <div className="kv"><span>base bars</span><b>{base.length.toLocaleString()}</b></div>
-            <div className="kv"><span>revealed</span><b>{revealed.toLocaleString()}</b></div>
-            <div className="kv"><span>view TF</span><b>{tf.label}</b></div>
-            <div className="kv"><span>offset</span><b>{formatOffset(currentTime, zone)}</b></div>
-            <div className="kv"><span>time</span><b>{currentTime ? formatDateTime(currentTime, zone) : "—"}</b></div>
-            <input
-              className="slider" type="range" min={10} max={base.length}
-              value={revealed} onChange={(e) => setRevealed(Number(e.target.value))}
+          )}
+
+          {dockOpen && dockTab === "history" && (
+            <HistoryTab session={session} />
+          )}
+
+          {dockOpen && dockTab === "strategy" && (
+            <StrategyPanel series={view} account={strategyAccount} symbolId="XAUUSD" />
+          )}
+
+          {dockOpen && dockTab === "journal" && (
+            <JournalPanel
+              session={session}
+              onEntries={(list) => setJournalEntries([...list])}
             />
-          </>
-        )}
+          )}
 
-        {rail === "trade" && (
-          <TradePanel
-            session={session}
-            blackout={blackout}
-            price={currentPrice}
-            contractSize={session.specRef.contractSize}
-            lotStep={session.specRef.lotStep}
-            minLot={session.specRef.lotMin}
-            maxLot={session.specRef.lotMax}
-            spec={session.specRef}
-          />
-        )}
+          {dockOpen && dockTab === "equity" && (
+            <EquityPanel
+              startingBalance={session.startBalance}
+              trades={session.snapshot().trades.map((tr) => ({
+                exitTime: tr.exitTime, pnl: tr.pnl,
+              }))}
+              balance={session.snapshot().balance}
+            />
+          )}
+        </div>
+      </section>
 
-        {rail === "news" && (
-          <NewsPanel
-            currency={session.symbol.startsWith("XAU") ? "USD" : session.symbol.slice(0, 3)}
-            now={replayTime}
-            onEvents={setCalendar}
-            onBlackout={setBlackout}
-          />
-        )}
-
-        {rail === "symbols" && <SymbolsPanel />}
-
-        {rail === "equity" && (
-          <EquityPanel
-            startingBalance={session.startBalance}
-            trades={session.snapshot().trades.map((t) => ({
-              exitTime: t.exitTime, pnl: t.pnl,
-            }))}
-            balance={session.snapshot().balance}
-          />
-        )}
-
-        {rail === "sessions" && (
-          <SessionsPanel
-            show={showSessions}
-            onShow={setShowSessions}
-            active={activeSessions}
-            onActive={setActiveSessions}
-            trades={journalEntries}
-          />
-        )}
-
-        {rail === "indicators" && (
-          <>
-            <h3>Indicators</h3>
-            <select
-              value=""
-              onChange={(e) => {
-                const kind = e.target.value as IndicatorKind;
-                if (!kind) return;
-                const period = kind === "RSI" ? 14 : kind === "CCI" ? 20 : kind === "ADX" ? 14 : 20;
-                setIndicators((l) => [...l, {
-                  id: Date.now(), kind, period, color: INDICATOR_COLORS[kind],
-                }]);
-              }}
-            >
-              <option value="">add indicator…</option>
-              {(["SMA", "EMA", "BB", "RSI", "ADX", "CCI", "VWAP", "SUPERTREND"] as IndicatorKind[])
-                .map((k) => <option key={k} value={k}>{k}</option>)}
-            </select>
-            <ul className="ind-list">
-              {indicators.map((ind) => (
-                <li key={ind.id}>
-                  <span className="dot" style={{ background: ind.color }} />
-                  <b>{ind.kind}</b>
-                  <input
-                    className="mini-num"
-                    data-field={`period-${ind.id}`}
-                    value={String(ind.period)}
-                    onChange={(e) => {
-                      const n = Number(e.target.value);
-                      // Guard the period here rather than in computeIndicator: a period of
-                      // 0 or NaN makes every indicator return NaN, which looks like a broken
-                      // chart rather than a bad input.
-                      if (!Number.isFinite(n) || n < 1) return;
-                      setIndicators((l) =>
-                        l.map((x) => (x.id === ind.id ? { ...x, period: Math.floor(n) } : x)),
-                      );
-                    }}
-                    inputMode="numeric"
-                    title={t("ind.period")}
-                  />
-                  <button
-                    className="mini"
-                    data-action={`remove-${ind.id}`}
-                    onClick={() => setIndicators((l) => l.filter((x) => x.id !== ind.id))}
-                    title={t("ind.remove")}
-                  >✕</button>
-                </li>
-              ))}
-            </ul>
-            {indicators.length === 0 && <p className="msg">{t("ind.empty")}</p>}
-            <p className="msg" data-kv="ind-count">
-              {t("ind.count")}: {indicators.length}
-            </p>
-          </>
-        )}
-
-        {rail === "strategy" && (
-          <StrategyPanel series={view} account={ACCOUNT} symbolId="XAUUSD" />
-        )}
-
-        {rail === "journal" && (
-          <JournalPanel
-            session={session}
-            onEntries={(list) => setJournalEntries([...list])}
-          />
-        )}
-
-        {settingsFor && (
-          <ToolSettings
-            kind={settingsFor}
-            configs={toolConfigs}
-            onChange={applyToolConfigs}
-            onClose={() => setSettingsFor(null)}
-            allKinds={ALL_KINDS}
-          />
-        )}
-
-        {dragMessage && <p className="status status-warn">{dragMessage}</p>}
-        {sessionNotice && (
-          <p className="status status-info">
-            {sessionNotice}
-            <button
-              className="status-dismiss"
-              onClick={() => {
-                setSessionNotice("");
-                const api = (globalThis as unknown as {
-                  fxlab?: { clearLiveSession?: (w: string) => Promise<{ ok: boolean }> };
-                }).fxlab;
-                void api?.clearLiveSession?.(workspace);
-              }}
-              title="Start a clean session"
-            >
-              ✕
-            </button>
-          </p>
-        )}
-        {status && <p className="status">{status}</p>}
-
-        <footer className="credit">Charting by Lightweight Charts (Apache-2.0)</footer>
-      </aside>
+      {/*
+        The login overlay owns the window (dimmed shell behind it) until a path is
+        chosen. The chart and the whole terminal exist underneath, so picking a path
+        reveals the app instead of booting it.
+      */}
+      {sessionMode === null && (
+        <LoginOverlay
+          onMtConnected={(info) => void enterMtLive(info)}
+          onOffline={enterOffline}
+          onMtLoad={loadStoredMt}
+          onDownload={openDownloadTab}
+          onImportFile={importPickedFile}
+        />
+      )}
     </div>
   );
 }

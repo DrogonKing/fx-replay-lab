@@ -1,15 +1,18 @@
 /**
- * Trading panel: manual order entry, open positions, account state.
+ * The order ticket, shown in the right sidebar.
  *
- * This is the piece that was missing — the account engine existed and the backtester
- * used it, but the renderer had no way to place a trade. Closing a position here
- * files it to the journal automatically (see renderer/trading.ts).
+ * This is the entry side of trading: account readouts, the ticket, and risk controls.
+ * The positions/orders/history TABLES used to be appended here, which pushed the
+ * ticket off screen the moment a few positions opened — they now live in the bottom
+ * dock (see PositionsTables.tsx). One engine, two views.
  */
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import type { TradingSession, SessionSnapshot } from "../trading.js";
 import type { Side } from "../../core/types.js";
 import { useI18n } from "../i18n-context.js";
 import { planRiskFromPoints } from "../../core/risk-sizing.js";
+import { planMm, type MmBasis, type MmUnit } from "../../core/mm.js";
+import { latinNum } from "../../core/format.js";
 import { localiseError } from "../../core/errors.js";
 import type { SymbolSpec } from "../../core/types.js";
 
@@ -26,11 +29,10 @@ interface Props {
   maxLot: number;
   /** the session's own spec, so risk sizing uses the same digits/leverage as the engine */
   spec: SymbolSpec;
-  onFiled?: (count: number) => void;
 }
 
 export function TradePanel({
-  session, price, contractSize, lotStep, minLot, maxLot, spec, onFiled, blackout,
+  session, price, contractSize, lotStep, minLot, maxLot, spec, blackout,
 }: Props): JSX.Element {
   const { t } = useI18n();
   const [snap, setSnap] = useState<SessionSnapshot>(() => session.snapshot());
@@ -49,6 +51,129 @@ export function TradePanel({
   /** sizing mode: raw lots, or lots derived from a risk percentage */
   const [sizeByRisk, setSizeByRisk] = useState(false);
   const [riskPct, setRiskPct] = useState("1");
+  /**
+   * Ticket mode: manual lots (the original ticket, untouched) or the money-management
+   * ticket the user knows from their MT EA — pick a basis and a unit, and the size is
+   * computed so that hitting the stop costs exactly the risk asked for.
+   */
+  const [ticketMode, setTicketMode] = useState<"manual" | "mm">("manual");
+  const [mmBasis, setMmBasis] = useState<MmBasis>("balance");
+  const [mmUnit, setMmUnit] = useState<MmUnit>("percent");
+  const [mmValue, setMmValue] = useState("1");
+  /**
+   * Auto-TP from risk:reward (the EA's Use_Auto_TP / Default_R_R): while on, the TP
+   * is derived from the stop — points × ratio — instead of typed, so a plan cannot
+   * be sized for one R:R and placed with another.
+   */
+  const [mmAutoTp, setMmAutoTp] = useState(false);
+  /** reward per unit of risk; 5 by default, like the EA's Default_R_R */
+  const [mmRr, setMmRr] = useState("5");
+  /**
+   * Automatic partial exits (the EA's Partial_exit levels), as editable strings so
+   * the three rows behave like every other numeric field here. Defaults are the
+   * classic 1R/2R/3R ladder over half, a quarter and a quarter.
+   */
+  const [mmPartials, setMmPartials] = useState(false);
+  const [mmPl, setMmPl] = useState<[string, string][]>([
+    ["1", "50"], ["2", "25"], ["3", "25"],
+  ]);
+
+  /**
+   * The MM settings survive restarts (setting key "mm_settings"), like the rest of the
+   * paper account. Saved only once the stored values have been read, or the defaults
+   * would overwrite them before the load lands.
+   */
+  const mmHydrated = useRef(false);
+  useEffect(() => {
+    const api = (globalThis as unknown as { fxlab?: {
+      getSetting?: (key: string) => Promise<string | null>;
+    } }).fxlab;
+    if (!api?.getSetting) {
+      mmHydrated.current = true;
+      return;
+    }
+    let cancelled = false;
+    void api.getSetting("mm_settings").then((raw) => {
+      if (cancelled) return;
+      try {
+        const p = JSON.parse(raw ?? "null") as {
+          basis?: string; unit?: string; value?: number | string;
+          autoTp?: boolean; rr?: number | string;
+          partials?: { enabled?: boolean; levels?: Array<{ r?: number; pct?: number }> };
+        };
+        if (p.basis === "balance" || p.basis === "equity" || p.basis === "freeMargin") {
+          setMmBasis(p.basis);
+        }
+        if (p.unit === "percent" || p.unit === "money") setMmUnit(p.unit);
+        const v = Number(p.value);
+        if (Number.isFinite(v) && v > 0) setMmValue(String(v));
+        // read defensively: values saved before the auto-TP fields exist lack them
+        if (typeof p.autoTp === "boolean") setMmAutoTp(p.autoTp);
+        const rr = Number(p.rr);
+        if (Number.isFinite(rr) && rr >= 0.1) setMmRr(String(rr));
+        // ...and the same for the partials ladder, row by row
+        if (p.partials && typeof p.partials === "object") {
+          if (typeof p.partials.enabled === "boolean") {
+            setMmPartials(p.partials.enabled);
+          }
+          const lv = Array.isArray(p.partials.levels) ? p.partials.levels : [];
+          const rows: [string, string][] = [];
+          for (const row of lv.slice(0, 3)) {
+            const rN = Number(row?.r);
+            const pctN = Number(row?.pct);
+            rows.push([
+              Number.isFinite(rN) && rN > 0 ? String(rN) : "1",
+              Number.isFinite(pctN) && pctN > 0 ? String(pctN) : "25",
+            ]);
+          }
+          if (rows.length === 3) setMmPl(rows);
+        }
+      } catch {
+        // unreadable settings: the defaults are what the ticket already shows
+      }
+      mmHydrated.current = true;
+    }).catch(() => {
+      mmHydrated.current = true;
+    });
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    if (!mmHydrated.current) return;
+    const api = (globalThis as unknown as { fxlab?: {
+      setSetting?: (key: string, value: string) => Promise<{ ok: boolean }>;
+    } }).fxlab;
+    void api?.setSetting?.(
+      "mm_settings",
+      JSON.stringify({
+        basis: mmBasis, unit: mmUnit, value: Number(mmValue) || 1,
+        autoTp: mmAutoTp, rr: Number(mmRr) || 5,
+        partials: {
+          enabled: mmPartials,
+          levels: mmPl.map(([r, pct]) => ({ r: Number(r) || 1, pct: Number(pct) || 0 })),
+        },
+      }),
+    );
+  }, [mmBasis, mmUnit, mmValue, mmAutoTp, mmRr, mmPartials, mmPl]);
+
+  /**
+   * Push the partial ladder to the session as it is edited, and again whenever the
+   * session instance is rebuilt (symbol switch, account reset): a fresh session
+   * starts with the ladder off, and the configured one must follow the account.
+   * The session's refusal — a ladder that sums past 100% or has a dead row — is
+   * its own arithmetic, shown verbatim.
+   */
+  useEffect(() => {
+    if (!mmHydrated.current) return;
+    if (!mmPartials) {
+      session.setAutoPartials(null);
+      return;
+    }
+    const res = session.setAutoPartials(
+      mmPl.map(([r, pct]) => ({ rMultiple: Number(r), percent: Number(pct) })),
+    );
+    if (!res.ok) setMsg(res.message ?? "");
+  }, [session, mmPartials, mmPl]);
 
   useEffect(() => session.subscribe(setSnap), [session]);
 
@@ -60,6 +185,24 @@ export function TradePanel({
 
   const slNum = Number(slPts);
   const tpNum = Number(tpPts);
+
+  /**
+   * The TP the auto-TP feature implies: stop points × ratio, the same magnitude for
+   * a buy and a sell because both are measured from the entry. Null when the feature
+   * is off, the ticket is manual, or the inputs are not usable numbers — in which
+   * case the typed TP stands.
+   */
+  const rrNum = Number(mmRr);
+  const autoTpPts = ticketMode === "mm" && mmAutoTp &&
+    Number.isFinite(slNum) && slNum > 0 &&
+    Number.isFinite(rrNum) && rrNum >= 0.1
+    ? slNum * rrNum
+    : null;
+
+  // The one TP the rest of the panel works with: the preview, the R-multiple and the
+  // placed order all read this, so an auto-TP order is placed with exactly the TP it
+  // previewed.
+  const tpEffNum = autoTpPts !== null ? autoTpPts : tpNum;
 
   /**
    * Risk-based sizing.
@@ -87,21 +230,49 @@ export function TradePanel({
     );
   }, [sizeByRisk, snap.balance, snap.freeMargin, riskPct, slPts, price, spec]);
 
+  /**
+   * The money-management ticket, MM-mode counterpart of `riskPlan`.
+   *
+   * planMm is pure and cheap, so it is recomputed on EVERY render: its inputs are the
+   * live snapshot numbers and the current price, which move with every replay step and
+   * every live tick. A refused plan (the minimum lot would over-risk) leaves lots at 0
+   * and disables Buy/Sell — placing it anyway would risk more than was asked, which is
+   * the one thing a risk tool must not do. The refusal text is the core's own
+   * arithmetic and is shown verbatim.
+   */
+  const mmPlan = ticketMode === "mm"
+    ? planMm({
+      basis: mmBasis,
+      unit: mmUnit,
+      value: Number(mmValue),
+      stopPoints: slNum,
+      balance: snap.balance,
+      equity: snap.equity,
+      freeMargin: snap.freeMargin,
+      leverage: session.accountLeverage,
+      price,
+    }, spec)
+    : null;
+
   // In risk mode the lots field displays the computed size and is read-only: letting the
   // user type over it would let them think they are risk-sized when they are not.
-  const effectiveLots = riskPlan
-    ? (riskPlan.lots > 0 ? riskPlan.lots : 0)
-    : Number(lots);
+  const effectiveLots = mmPlan
+    ? (mmPlan.ok ? mmPlan.lots : 0)
+    : riskPlan
+      ? (riskPlan.lots > 0 ? riskPlan.lots : 0)
+      : Number(lots);
 
   const lotsNum = effectiveLots;
-  const lotsValid = riskPlan
-    ? riskPlan.lots > 0
-    : Number.isFinite(lotsNum) && lotsNum >= minLot && lotsNum <= maxLot;
+  const lotsValid = mmPlan
+    ? mmPlan.ok && mmPlan.lots > 0
+    : riskPlan
+      ? riskPlan.lots > 0
+      : Number.isFinite(lotsNum) && lotsNum >= minLot && lotsNum <= maxLot;
   const riskMoney = Number.isFinite(slNum) && slNum > 0 && lotsValid
     ? slNum * lotsNum * contractSize
     : 0;
-  const rewardMoney = Number.isFinite(tpNum) && tpNum > 0 && lotsValid
-    ? tpNum * lotsNum * contractSize
+  const rewardMoney = Number.isFinite(tpEffNum) && tpEffNum > 0 && lotsValid
+    ? tpEffNum * lotsNum * contractSize
     : 0;
   const rr = riskMoney > 0 ? rewardMoney / riskMoney : 0;
 
@@ -114,7 +285,7 @@ export function TradePanel({
 
     // market: fill now. everything else goes on the book.
     if (kind === "market") {
-      const r = session.open(side, lotsNum, slNum || 0, tpNum || 0, tagList);
+      const r = session.open(side, lotsNum, slNum || 0, tpEffNum || 0, tagList);
       setMsg(r.ok
         ? `${side} ${lotsNum} ${t("trade.opened")}`
         : localiseError(r.message ?? "", (k, v) => t(k, v)));
@@ -135,7 +306,7 @@ export function TradePanel({
       price: trig,
       limitPrice: kind === "stop-limit" && Number.isFinite(lim) ? lim : undefined,
       slDistance: slNum || 0,
-      tpDistance: tpNum || 0,
+      tpDistance: tpEffNum || 0,
       tags: tagList,
       // OCO on a pending order pairs it with a stop on the other side, which is the
       // common breakout/breakdown bracket.
@@ -188,6 +359,17 @@ export function TradePanel({
 
       <div className="order-form">
         <label>
+          {t("mm.mode")}
+          <select
+            data-field="ticket-mode"
+            value={ticketMode}
+            onChange={(e) => setTicketMode(e.target.value as "manual" | "mm")}
+          >
+            <option value="manual">{t("mm.modeManual")}</option>
+            <option value="mm">{t("mm.modeMm")}</option>
+          </select>
+        </label>
+        <label>
           {t("trade.type")}
           <select
             value={kind}
@@ -203,49 +385,149 @@ export function TradePanel({
           {t("trade.lots")}
           <input
             data-field="lots"
-            value={sizeByRisk ? (riskPlan && riskPlan.lots > 0 ? riskPlan.lots.toFixed(2) : "—") : lots}
+            value={
+              mmPlan
+                ? (mmPlan.ok ? mmPlan.lots.toFixed(2) : "—")
+                : sizeByRisk
+                  ? (riskPlan && riskPlan.lots > 0 ? riskPlan.lots.toFixed(2) : "—")
+                  : lots
+            }
             onChange={(e) => setLots(e.target.value)}
             inputMode="decimal"
-            readOnly={sizeByRisk}
-            title={sizeByRisk ? t("risk.computed") : undefined}
+            readOnly={sizeByRisk || ticketMode === "mm"}
+            title={sizeByRisk || ticketMode === "mm" ? t("risk.computed") : undefined}
+            dir="ltr"
           />
         </label>
-        <label>
-          {t("risk.mode")}
-          <input
-            data-field="size-by-risk"
-            type="checkbox"
-            checked={sizeByRisk}
-            onChange={(e) => setSizeByRisk(e.target.checked)}
-          />
-        </label>
-        {sizeByRisk && (
-          <label>
-            {t("risk.percent")}
-            <input
-              data-field="risk-percent"
-              value={riskPct}
-              onChange={(e) => setRiskPct(e.target.value)}
-              inputMode="decimal"
-            />
-          </label>
+        {ticketMode === "mm" ? (
+          <>
+            {/*
+              The money-management ticket: basis, unit, risk value, and the stop in
+              points. The stop is the SAME state the manual ticket's SL uses, so the
+              placed order's SL is exactly the distance the size was computed for.
+            */}
+            <label>
+              {t("mm.basis")}
+              <select
+                data-field="mm-basis"
+                value={mmBasis}
+                onChange={(e) => setMmBasis(e.target.value as MmBasis)}
+              >
+                <option value="balance">{t("mm.basisBalance")}</option>
+                <option value="equity">{t("mm.basisEquity")}</option>
+                <option value="freeMargin">{t("mm.basisFreeMargin")}</option>
+              </select>
+            </label>
+            <label>
+              {t("mm.unit")}
+              <select
+                data-field="mm-unit"
+                value={mmUnit}
+                onChange={(e) => setMmUnit(e.target.value as MmUnit)}
+              >
+                <option value="percent">{t("mm.unitPercent")}</option>
+                <option value="money">{t("mm.unitMoney")}</option>
+              </select>
+            </label>
+            <label>
+              {t("mm.value")}
+              <input
+                data-field="mm-value"
+                value={mmValue}
+                onChange={(e) => setMmValue(e.target.value)}
+                inputMode="decimal"
+                dir="ltr"
+              />
+            </label>
+            <label>
+              {t("trade.sl")}
+              <input
+                data-field="mm-stop"
+                value={slPts}
+                onChange={(e) => setSlPts(e.target.value)}
+                inputMode="decimal"
+                dir="ltr"
+                title={t("mm.stopHint")}
+              />
+            </label>
+            {/*
+              Auto-TP from R:R, the EA's Use_Auto_TP / Default_R_R. While on, the TP
+              field below is derived (entry ± stop × ratio) and read-only: typing a
+              target over it would let the placed order disagree with the risk plan
+              the size was computed for.
+            */}
+            <label className="checkbox-row">
+              <input
+                data-field="mm-auto-tp"
+                type="checkbox"
+                checked={mmAutoTp}
+                onChange={(e) => setMmAutoTp(e.target.checked)}
+              />
+              {t("mm.autoTp")}
+            </label>
+            {mmAutoTp && (
+              <label>
+                {t("mm.rr")}
+                <input
+                  data-field="mm-rr"
+                  value={mmRr}
+                  onChange={(e) => setMmRr(e.target.value)}
+                  inputMode="decimal"
+                  dir="ltr"
+                  placeholder="5"
+                  title={t("mm.autoTpHint")}
+                />
+              </label>
+            )}
+          </>
+        ) : (
+          <>
+            <label>
+              {t("risk.mode")}
+              <input
+                data-field="size-by-risk"
+                type="checkbox"
+                checked={sizeByRisk}
+                onChange={(e) => setSizeByRisk(e.target.checked)}
+              />
+            </label>
+            {sizeByRisk && (
+              <label>
+                {t("risk.percent")}
+                <input
+                  data-field="risk-percent"
+                  value={riskPct}
+                  onChange={(e) => setRiskPct(e.target.value)}
+                  inputMode="decimal"
+                />
+              </label>
+            )}
+            <label>
+              {t("trade.sl")}
+              <input
+                data-field="sl"
+                value={slPts}
+                onChange={(e) => setSlPts(e.target.value)}
+                inputMode="decimal"
+              />
+            </label>
+          </>
         )}
-        <label>
-          {t("trade.sl")}
-          <input
-            data-field="sl"
-            value={slPts}
-            onChange={(e) => setSlPts(e.target.value)}
-            inputMode="decimal"
-          />
-        </label>
         <label>
           {t("trade.tp")}
           <input
             data-field="tp"
-            value={tpPts}
+            value={
+              autoTpPts !== null
+                // trim float noise: 7.5 × 1.5 shows as 11.25, not 11.250000000000002
+                ? String(Number(autoTpPts.toFixed(4)))
+                : tpPts
+            }
             onChange={(e) => setTpPts(e.target.value)}
             inputMode="decimal"
+            dir="ltr"
+            readOnly={autoTpPts !== null}
+            title={autoTpPts !== null ? t("mm.autoTpHint") : undefined}
           />
         </label>
         <label>
@@ -289,6 +571,19 @@ export function TradePanel({
           </>
         )}
       </div>
+
+      {mmPlan && (mmPlan.ok ? (
+        <div className="kv num" data-kv="mm-plan">
+          <span>{t("mm.plan")}</span>
+          <b>
+            {latinNum(Number(mmPlan.lots.toFixed(2)))} {t("trade.lotsShort")} ·{" "}
+            {t("mm.risk")} ${latinNum(Number(mmPlan.riskMoney.toFixed(2)))} ·{" "}
+            {t("trade.margin")} ${latinNum(Number(mmPlan.margin.toFixed(2)))}
+          </b>
+        </div>
+      ) : (
+        <p className="mm-refusal num" data-kv="mm-refusal">{mmPlan.refusal}</p>
+      ))}
 
       <div className="kv" data-kv="book">
         <span>{t("book.total")}</span>
@@ -407,148 +702,6 @@ export function TradePanel({
       </div>
 
       {msg && <p className="msg">{msg}</p>}
-
-      {snap.pendingOrders.length > 0 && (
-        <>
-          <h3>{t("trade.pending")} ({snap.pendingOrders.length})</h3>
-          <table className="grid">
-            <thead>
-              <tr>
-                <th>{t("trade.order")}</th>
-                <th>{t("trade.price")}</th>
-                <th>{t("trade.status")}</th>
-                <th />
-              </tr>
-            </thead>
-            <tbody>
-              {snap.pendingOrders.map((o) => (
-                <tr key={o.id}>
-                  <td className={o.side === "buy" ? "up" : "down"}>
-                    {o.side} {o.kind}
-                  </td>
-                  <td>
-                    {o.price.toFixed(2)}
-                    {o.limitPrice !== undefined && ` / ${o.limitPrice.toFixed(2)}`}
-                  </td>
-                  <td>
-                    {o.triggered ? t("trade.armed") : t("trade.waiting")}
-                    {o.ocoGroup && " · OCO"}
-                  </td>
-                  <td>
-                    <button
-                      className="row-del"
-                      onClick={() => session.cancelOrder(o.id)}
-                      title="Cancel this order"
-                    >
-                      ✕
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          <button onClick={() => session.cancelAllOrders()}>{t("trade.cancelAll")}</button>
-        </>
-      )}
-
-      {snap.positions.length > 0 && (
-        <>
-          <h3>{t("trade.open")} ({snap.positions.length})</h3>
-          <table className="grid">
-            <thead>
-              <tr>
-                <th>{t("trade.side")}</th>
-                <th>{t("trade.lotsShort")}</th>
-                <th>{t("trade.entryPrice")}</th>
-                <th>{t("trade.pnl")}</th>
-                <th />
-              </tr>
-            </thead>
-            <tbody>
-              {snap.positions.map((p) => {
-                // Use the engine's own valuation. Recomputing here produced a row that
-                // disagreed with the account by exactly the commission, and a no-op
-                // ternary lost the bid/ask distinction for shorts.
-                const pnl = session.positionPnl(p, price);
-                return (
-                  <tr key={p.id}>
-                    <td className={p.side === "buy" ? "up" : "down"}>{p.side}</td>
-                    <td>{p.lots}</td>
-                    <td>{p.entryPrice.toFixed(2)}</td>
-                    <td className={pnl >= 0 ? "up" : "down"}>{pnl.toFixed(2)}</td>
-                    <td className="row-actions">
-                      <button
-                        className="row-half"
-                        onClick={() => {
-                          const half = Math.max(
-                            minLot,
-                            Math.floor((p.lots / 2) / lotStep) * lotStep,
-                          );
-                          const r = session.closePartial(p.id, Number(half.toFixed(2)));
-                          if (!r.ok) setMsg(localiseError(r.message ?? "", (k, v) => t(k, v)));
-                        }}
-                        title={`Close half (${(Math.max(minLot, Math.floor((p.lots / 2) / lotStep) * lotStep)).toFixed(2)} lots)`}
-                      >
-                        ½
-                      </button>
-                      <button
-                        className="row-del"
-                        onClick={() => session.closeOne(p.id)}
-                        title="Close this position"
-                      >
-                        ✕
-                      </button>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-          <p className="msg">{t("trade.dragHint")}</p>
-          <button onClick={() => { const n = session.closeAll(); onFiled?.(n); }}>
-            {t("trade.closeAll")}
-          </button>
-        </>
-      )}
-
-      {snap.orderHistory.length > 0 && (
-        <p className="msg">
-          {t("trade.ordersSummary", {
-            filled: snap.orderHistory.filter((o) => o.status === "filled").length,
-            cancelled: snap.orderHistory.filter((o) => o.status === "cancelled").length,
-          })}
-          {snap.orderHistory.some((o) => o.cancelReason?.includes("OCO"))
-            ? t("trade.ocoCancelled")
-            : ""}
-        </p>
-      )}
-
-      {snap.trades.length > 0 && (
-        <>
-          <h3>{t("trade.closed")} ({snap.trades.length})</h3>
-          <table className="grid">
-            <thead>
-              <tr>
-                <th>{t("trade.side")}</th>
-                <th>{t("trade.lotsShort")}</th>
-                <th>{t("trade.pnl")}</th>
-                <th>{t("trade.why")}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {snap.trades.slice(-8).reverse().map((t) => (
-                <tr key={t.id}>
-                  <td className={t.side === "buy" ? "up" : "down"}>{t.side}</td>
-                  <td>{t.lots}</td>
-                  <td className={t.pnl >= 0 ? "up" : "down"}>{t.pnl.toFixed(2)}</td>
-                  <td>{t.reason}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          <p className="msg">{t("trade.filedNotice")}</p>
-        </>
-      )}
     </div>
   );
 }

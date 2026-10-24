@@ -1,5 +1,21 @@
 * { box-sizing: border-box; }
 
+/* ---- global utilities ----
+   .up / .down are colour SEMANTICS (profit / loss), not legend styling: they were only
+   defined under .legend, so every P/L cell outside it rendered uncoloured while the
+   class names sat on the nodes. Defined globally; the legend's own rules still apply
+   where they are more specific.
+   .num keeps digits Latin and LTR inside RTL text via bidi isolation — the project's
+   numbers-stay-Latin rule, expressed once. */
+.up { color: var(--up); }
+.down { color: var(--dn); }
+
+.num {
+  direction: ltr;
+  unicode-bidi: isolate;
+  font-variant-numeric: tabular-nums;
+}
+
 html, body, #root {
   height: 100%;
   margin: 0;
@@ -8,12 +24,45 @@ html, body, #root {
   font: 13px/1.4 -apple-system, "Segoe UI", Roboto, Ubuntu, sans-serif;
 }
 
+/*
+  Shell anatomy, in one place:
+    row 1  top toolbar (var(--toolbar-h))
+    row 2  [drawing rail var(--rail-w)] [chart 1fr] [sidebar var(--sidebar-w)]
+    row 3  bottom dock (var(--dock-h), collapsed by default)
+  Both side columns/rows collapse through :has() below, keyed off attributes the JSX
+  already sets — no second class on the root, no JS measurement.
+*/
 .app {
   display: grid;
-  grid-template-columns: 1fr 280px;
-  grid-template-rows: 44px 1fr;
-  grid-template-areas: "toolbar toolbar" "chart panel";
+  grid-template-columns: var(--rail-w) minmax(0, 1fr) var(--sidebar-w);
+  grid-template-rows: var(--toolbar-h) minmax(0, 1fr) var(--dock-h);
+  grid-template-areas:
+    "toolbar toolbar toolbar"
+    "rail chart sidebar"
+    "dock dock dock";
   height: 100%;
+}
+
+/* Sidebar hidden: its column collapses and the chart takes the space. */
+.app:has(> .panel[data-panel-open="no"]) {
+  grid-template-columns: var(--rail-w) minmax(0, 1fr) 0;
+  grid-template-areas:
+    "toolbar toolbar toolbar"
+    "rail chart chart"
+    "dock dock dock";
+}
+
+.app > .panel[data-panel-open="no"] {
+  display: none;
+}
+
+/* Dock collapsed: its row collapses to zero. */
+.app:has(> .dock[data-dock-open="no"]) {
+  grid-template-rows: var(--toolbar-h) minmax(0, 1fr) 0;
+}
+
+.app > .dock[data-dock-open="no"] {
+  display: none;
 }
 
 .toolbar {
@@ -72,7 +121,7 @@ html, body, #root {
   background: var(--bg-1);
   border: 1px solid var(--line-2);
   border-radius: 6px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.55);
+  box-shadow: var(--shadow-menu);
   padding: 6px;
 }
 
@@ -133,7 +182,7 @@ html, body, #root {
   padding: 4px 6px;
 }
 
-.tf-custom input:focus { outline: none; border-color: #2962ff; }
+.tf-custom input:focus { outline: none; border-color: var(--accent); }
 
 .tf-custom button {
   background: var(--bg-2);
@@ -194,7 +243,7 @@ html, body, #root {
 }
 
 .panel-toggle:hover { background: var(--bg-3); color: var(--tx-0); }
-.panel-toggle.on { color: var(--accent); border-color: #2962ff; }
+.panel-toggle.on { color: var(--accent); border-color: var(--accent); }
 .grow { flex: 1; }
 
 .toolbar label {
@@ -359,7 +408,7 @@ html, body, #root {
   background: var(--bg-1);
   border: 1px solid var(--line-2);
   border-radius: 6px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.55);
+  box-shadow: var(--shadow-menu);
   padding: 8px;
 }
 
@@ -375,7 +424,7 @@ html, body, #root {
   margin-bottom: 6px;
 }
 
-.tz-search:focus { outline: none; border-color: #2962ff; }
+.tz-search:focus { outline: none; border-color: var(--accent); }
 
 .tz-list {
   list-style: none;
@@ -425,8 +474,8 @@ html, body, #root {
 
 .tz-dst {
   font-size: 9px;
-  color: var(--accent);
-  border: 1px solid #4a4022;
+  color: var(--warn);
+  border: 1px solid color-mix(in srgb, var(--warn) 35%, transparent);
   border-radius: 2px;
   padding: 0 3px;
 }

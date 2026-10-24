@@ -1,11 +1,11 @@
-/* Visual refresh layer. Loaded last; no logic or layout structure is changed. */
+/* Visual refresh layer. Loaded late; no logic or layout structure is changed.
+   (Row heights now come from styles.css's grid + the --toolbar-h token.) */
 html, body, #root {
   background: var(--bg-0);
   color: var(--tx-0);
   font: 13px/1.45 "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, Roboto, sans-serif;
   -webkit-font-smoothing: antialiased;
 }
-.app { grid-template-rows: 48px 1fr; }
 .toolbar { gap: 10px; padding: 0 14px; background: var(--bg-1); border-bottom: 1px solid var(--line); }
 .brand { color: var(--tx-0); font-weight: 700; letter-spacing: 0.2px; padding-inline-end: 6px; }
 .brand::before { content: ""; display: inline-block; width: 8px; height: 8px; margin-inline-end: 8px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 10px var(--accent); }
@@ -15,7 +15,7 @@ button, select, input { transition: background var(--ease), border-color var(--e
   background: var(--bg-2); border: 1px solid var(--line-2); border-radius: var(--r-sm); padding: 5px 10px; color: var(--tx-0);
 }
 .toolbar button:hover, .tf-button:hover, .tz-button:hover, .panel-toggle:hover { background: var(--bg-3); border-color: var(--accent); }
-:where(button, select, input, textarea):focus-visible { outline: none; box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 55%, transparent); border-color: var(--accent); }
+:where(button, select, input, textarea):focus-visible { outline: none; box-shadow: var(--focus-ring); border-color: var(--accent); }
 .panel-toggle.on { color: var(--accent); border-color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, var(--bg-2)); }
 
 .panel { background: var(--bg-1); border-inline-start: 1px solid var(--line); padding: 12px 14px; gap: 4px; }
@@ -34,7 +34,7 @@ button, select, input { transition: background var(--ease), border-color var(--e
 }
 .tf-pick.on, .tz-row.on { color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); }
 .tf-pick:hover:not(:disabled), .tz-row.active, .flyout-item:hover { background: var(--bg-3); }
-.tf-star.on, .tf-star:hover { color: var(--warn); }
+.tf-star.on, .tf-star:hover { color: var(--accent); }
 
 .draw-rail { background: var(--bg-1); border-inline-end: 1px solid var(--line); }
 .tool-btn { border-radius: var(--r-sm); }

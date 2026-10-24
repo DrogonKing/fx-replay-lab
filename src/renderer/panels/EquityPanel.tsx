@@ -12,6 +12,7 @@
  */
 import React, { useEffect, useMemo, useRef } from "react";
 import { useI18n } from "../i18n-context.js";
+import { CHART_THEME } from "../chart-theme.js";
 import {
   summariseCurve, downsampleCurve, fromTrades, describeCurve, type CurvePoint,
 } from "../../core/equity-curve.js";
@@ -73,9 +74,10 @@ export function EquityPanel({ startingBalance, trades, balance }: EquityPanelPro
     const y = (v: number): number =>
       PAD.top + plotH - ((v - lo) / (hi - lo)) * plotH;
 
-    // grid + axis labels
-    ctx.strokeStyle = "#1e222d";
-    ctx.fillStyle = "#787b86";
+    // grid + axis labels — the same values the price chart paints with, so the two
+    // canvases read as one product
+    ctx.strokeStyle = CHART_THEME.grid;
+    ctx.fillStyle = CHART_THEME.text;
     ctx.font = "10px ui-monospace, monospace";
     ctx.lineWidth = 1;
     for (let g = 0; g <= 4; g++) {
@@ -90,7 +92,7 @@ export function EquityPanel({ startingBalance, trades, balance }: EquityPanelPro
 
     // break-even line: above it the account is up
     const beY = y(startingBalance);
-    ctx.strokeStyle = "#787b8655";
+    ctx.strokeStyle = `${CHART_THEME.crosshair}55`;
     ctx.setLineDash([4, 4]);
     ctx.beginPath();
     ctx.moveTo(PAD.left, beY);

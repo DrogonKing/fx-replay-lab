@@ -55,17 +55,6 @@ export function toSeries(p: SeriesPayload): CandleSeries {
   };
 }
 
-export function toPayload(s: CandleSeries): SeriesPayload {
-  return {
-    time: Array.from(s.time),
-    open: Array.from(s.open),
-    high: Array.from(s.high),
-    low: Array.from(s.low),
-    close: Array.from(s.close),
-    volume: Array.from(s.volume),
-  };
-}
-
 function settingsOf(req: RunRequest): BacktestSettings {
   return {
     account: req.account,

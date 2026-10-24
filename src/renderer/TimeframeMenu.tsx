@@ -27,10 +27,16 @@ export interface TimeframeMenuProps {
   onReject: (f: Timeframe) => void;
   /** returns true when the custom label was accepted */
   onCustom: (label: string) => boolean;
+  /**
+   * Compact trigger for the toolbar's quick row: shows "⋯" instead of the current
+   * frame, because the quick buttons already highlight the current one.
+   */
+  compactIcon?: boolean;
 }
 
 export function TimeframeMenu({
   current, frames, baseFrame, favourites, onToggleFavourite, onChoose, onReject, onCustom,
+  compactIcon = false,
 }: TimeframeMenuProps): JSX.Element {
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
@@ -129,7 +135,7 @@ export function TimeframeMenu({
         title={t("tf.buttonHint")}
         onClick={() => setOpen((o) => !o)}
       >
-        <span data-field="tf-current">{current.label}</span>
+        <span data-field="tf-current">{compactIcon ? "⋯" : current.label}</span>
         <span className="tf-caret">▾</span>
       </button>
 

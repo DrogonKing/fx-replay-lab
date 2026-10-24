@@ -81,7 +81,6 @@ export interface Drawing {
 }
 
 export const FIB_LEVELS = [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1];
-export const FIB_EXT_LEVELS = [0, 0.618, 1, 1.618, 2.618];
 
 /** Required number of points for a kind, or 0 when it varies. */
 export function requiredPoints(kind: DrawingKind): number {

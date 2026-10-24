@@ -23,7 +23,7 @@
     "dist": "npm run build && electron-builder"
   },
   "dependencies": {
-    "better-sqlite3": "^11.5.0",
+    "better-sqlite3": "^12.11.1",
     "lightweight-charts": "^4.2.0",
     "lzma-purejs": "^0.9.3",
     "react": "^18.3.1",

@@ -1,0 +1,15 @@
+{
+  "name": "dev-fx-replay-lab-24ec7731",
+  "plugins": [
+    {
+      "name": "fa-bidi-fix",
+      "source": "./fa-bidi-fix",
+      "version": "0.1.0",
+      "description": "Injects bidi-safe Persian/English writing rules into every session and adds a /fix-bidi command to repair scrambled mixed-direction text",
+      "displayName": "Persian Bidi Fix",
+      "displayName_i18n": { "fa-IR": "اصلاح متن دوجهنده فارسی" },
+      "description_i18n": { "fa-IR": "تزریق قواعد نگارش دوجهنده در هر نشست، به‌علاوه فرمان /fix-bidi برای اصلاح متن‌های درهم‌ریخته فارسی/انگلیسی" },
+      "category": "productivity"
+    }
+  ]
+}

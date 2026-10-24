@@ -8,6 +8,7 @@
  */
 import React, { useRef, useState } from "react";
 import { parseCsv } from "../../core/csv.js";
+import { latinNum } from "../../core/format.js";
 import {
   mapHeaders, checkMap, rowFromMap, auditCandles, describeQuality,
   type ColumnMap, type QualityReport,
@@ -79,7 +80,7 @@ export function DataPanel({
       .join("\n");
     onImport(`${head}\n${body}`, pending.name);
     setNote(
-      `${pending.name}: ${candles.length.toLocaleString()} bars` +
+      `${pending.name}: ${latinNum(candles.length)} bars` +
       (rejected > 0 ? `, ${rejected} rows rejected` : "") +
       (audit.clean ? "" : " — see the data quality report"),
     );
@@ -106,7 +107,7 @@ export function DataPanel({
         setPending({ name: file.name, text, headers, rows, map });
         onImport(text, file.name);
         setNote(
-          `${file.name}: ${auto.candles.length.toLocaleString()} bars, ` +
+          `${file.name}: ${latinNum(auto.candles.length)} bars, ` +
           `${auto.detectedMinutes || "?"}m${auto.skippedHeader ? ", header skipped" : ""}` +
           (auto.rowsRejected > 0 ? `, ${auto.rowsRejected} rejected` : "") +
           (audit.clean ? "" : " — see the data quality report"),
@@ -180,7 +181,7 @@ export function DataPanel({
           </div>
           <div className="kv"><span>mode</span><b>{status.mode}</b></div>
           <div className="kv"><span>source</span><b>{status.servedBy ?? "—"}</b></div>
-          <div className="kv"><span>bars</span><b>{status.barCount.toLocaleString()}</b></div>
+          <div className="kv"><span>bars</span><b className="num">{latinNum(status.barCount)}</b></div>
           <p className="status-note">{status.message}</p>
         </div>
       )}
@@ -239,7 +240,7 @@ export function DataPanel({
         <div className="quality" data-panel="quality">
           <h4>data quality</h4>
           <div className="kv" data-kv="q-bars">
-            <span>bars</span><b>{quality.bars.toLocaleString()}</b>
+            <span>bars</span><b className="num">{latinNum(quality.bars)}</b>
           </div>
           <div className="kv" data-kv="q-spacing">
             <span>spacing</span><b>{Math.round(quality.spacing / 60)}m</b>

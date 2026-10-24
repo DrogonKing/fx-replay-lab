@@ -132,6 +132,55 @@ const api = {
     error?: string;
   }> => ipcRenderer.invoke("broker:oandaCandles", req),
 
+  // ---- MT data service (v2) ----
+  /** Bridge health: alive vs logged-in vs unreachable — all three are real states. */
+  mtStatus: (): Promise<{
+    ok?: boolean; connected?: boolean; account?: string; server?: string; company?: string;
+    symbols?: number; terminalPid?: number | null; startedByUs?: boolean; hidden?: boolean;
+    serverOffsetSeconds?: number | null; error?: string;
+  }> => ipcRenderer.invoke("mt:status"),
+
+  /** Recent bars for the live chart, one request per poll. */
+  mtLatest: (req: {
+    symbol: string; timeframe: string; count: number;
+  }): Promise<{
+    ok: boolean;
+    candles?: Array<{ time: number; open: number; high: number; low: number; close: number; volume: number }>;
+    error?: string;
+  }> => ipcRenderer.invoke("mt:latest", req),
+
+  /** Chunked download from the logged-in MT account into the local store; resumable. */
+  mtDownload: (req: {
+    symbol: string; timeframe: string; from: number; to: number; source: string;
+  }): Promise<{
+    ok: boolean;
+    state: { chunksTotal: number; chunksDone: number; bars: number; failed: number; failures: string[] } | null;
+    error?: string;
+  }> => ipcRenderer.invoke("mt:download", req),
+
+  onMtDownloadProgress: (cb: (p: {
+    chunksTotal: number; chunksDone: number; bars: number; failed: number; failures: string[];
+  }) => void): void => {
+    ipcRenderer.removeAllListeners("mt:downloadProgress");
+    ipcRenderer.on("mt:downloadProgress", (_e, p) => cb(p));
+  },
+
+  mtCancelDownload: (): Promise<{ ok: boolean }> => ipcRenderer.invoke("mt:cancelDownload"),
+
+  /** What is already stored locally: per symbol+tf coverage. */
+  mtCatalog: (): Promise<Array<{
+    symbol: string; tf: string; source: string; count: number; from: number; to: number;
+  }>> => ipcRenderer.invoke("mt:catalog"),
+
+  /** Stored bars for offline replay — no network in this path. */
+  mtLoadCandles: (req: {
+    symbol: string; timeframe: string; from?: number; to?: number;
+  }): Promise<Array<{ time: number; open: number; high: number; low: number; close: number; volume: number }>> =>
+    ipcRenderer.invoke("mt:load", req),
+
+  mtDeleteData: (req: { symbol: string; timeframe: string }): Promise<{ ok: boolean }> =>
+    ipcRenderer.invoke("mt:deleteData", req),
+
   /** Per-tool drawing style: raw JSON text, parsed by the renderer once. */
   loadToolConfigs: (): Promise<{ raw: string | null; updatedAt: number | null }> =>
     ipcRenderer.invoke("db:loadToolConfigs"),

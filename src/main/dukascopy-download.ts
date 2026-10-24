@@ -223,54 +223,6 @@ export async function downloadRange(req: DownloadRequest): Promise<DownloadResul
 }
 
 /**
- * A second pass over the failures.
- *
- * The first pass runs at full speed and accepts some losses; this one is slower and tries only
- * what failed, which is what turns "2540 of 2557" into a complete file.
- */
-export async function retryFailures(
-  req: DownloadRequest,
-  failures: readonly string[],
-  onProgress?: (p: DownloadProgress) => void,
-): Promise<Candle[]> {
-  const out: Candle[] = [];
-  const progress = emptyProgress(failures.length);
-  const scale = pointScale(req.symbol);
-
-  for (const entry of failures) {
-    const key = entry.split(":")[0] ?? "";
-    const [ys, ms, ds] = key.split("-");
-    const y = Number(ys), m = Number(ms), d = Number(ds);
-    if (!Number.isFinite(y) || !Number.isFinite(m) || !Number.isFinite(d)) {
-      progress.done++;
-      continue;
-    }
-    try {
-      const buf = await fetchDay(dukascopyUrl(req.symbol, y, m, d));
-      if (buf) {
-        const raw = decompressBi5(buf);
-        const bars = decodeCandles(raw, scale);
-        const midnight = Date.UTC(y, m - 1, d) / 1000;
-        const candles = bars.map((b) => ({
-          time: midnight + b.offset,
-          open: b.open, high: b.high, low: b.low, close: b.close, volume: b.volume,
-        }));
-        out.push(...candles);
-        await writeCache(cachePath(req.dir, req.symbol, key), candles);
-        progress.bars += candles.length;
-      }
-    } catch {
-      progress.failed++;
-    }
-    progress.done++;
-    onProgress?.(progress);
-    // gentler than the first pass: the server is already struggling
-    await sleep(1500);
-  }
-  return out.sort((a, b) => a.time - b.time);
-}
-
-/**
  * Extract the text of every .csv inside a ZIP.
  *
  * Node's stdlib has no ZIP reader and adding a package for one import is not worth it. This
@@ -320,22 +272,3 @@ export function unzipCsv(buf: Buffer): string[] {
   return out;
 }
 
-/** How much is already cached, for a "you have this" hint before downloading. */
-export async function cachedSummary(
-  dir: string,
-  symbol: string,
-  from: number,
-  to: number,
-): Promise<{ days: number; total: number }> {
-  const days = daysBetween(from, to);
-  let have = 0;
-  for (const d of days) {
-    try {
-      await fs.access(cachePath(dir, symbol, dayKey(d.y, d.m, d.d)));
-      have++;
-    } catch {
-      // not cached
-    }
-  }
-  return { days: have, total: days.length };
-}

@@ -1,0 +1,8 @@
+{
+  "name": "fa-bidi-fix",
+  "version": "0.1.0",
+  "description": "Injects bidi-safe Persian/English writing rules into every session and adds a /fix-bidi command to repair scrambled mixed-direction text",
+  "author": { "name": "amir hossein" },
+  "hooks": "./hooks/hooks.json",
+  "commands": "./commands"
+}

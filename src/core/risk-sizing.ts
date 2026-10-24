@@ -215,8 +215,3 @@ export function maxStopPoints(
   const priceDistance = riskMoney / perLot;
   return priceToPoints(priceDistance, sym);
 }
-
-/** Normalise a user-typed lots value the way the engine will, for display. */
-export function clampLots(lots: number, sym: SymbolSpec): number {
-  return normaliseLots(lots, sym);
-}

@@ -37,3 +37,6 @@ bridge/python/
 # Downloaded BLE/data fixtures
 history/
 *.bi5
+
+# Local pre-rewrite snapshots made outside version control
+backup/

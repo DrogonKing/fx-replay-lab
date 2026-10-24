@@ -40,6 +40,10 @@ export interface SessionSnapshot {
   pendingOrders: PendingOrder[];
   /** orders that filled or were cancelled, newest last */
   orderHistory: PendingOrder[];
+  /** the session loss/profit limits in force; the UI shows the state from these */
+  limits: PaperLimits;
+  /** balance change since the starting balance plus floating P/L, the number the limits measure */
+  sessionNet: number;
 }
 
 export interface PlaceOrderResult {
@@ -58,17 +62,129 @@ const DEFAULT_ACCOUNT: Account = {
   leverage: 100, mode: "hedging",
 };
 
+/**
+ * Paper-trading cost overrides, Soft4FX style: the user sets the spread and the
+ * commission their broker charges, and every fill is priced with those numbers.
+ *
+ * `spreadPoints` is in POINTS (one point is 10^-digits of the symbol) because that
+ * is what a broker quotes and what the panel collects; the engine takes price units.
+ */
+export interface PaperCosts {
+  spreadPoints: number;
+  commissionPerLot: number;
+}
+
+/**
+ * Session loss/profit limits, the EA's Maximum_Loss / Maximum_Profit: once the
+ * session's net (realised plus floating) crosses a limit, no NEW risk may be taken.
+ *
+ * Both are money amounts and 0 disables them, like the EA's 0.0 default: a limit of
+ * zero is not "stop at breakeven", it is "no limit at all".
+ */
+export interface PaperLimits {
+  maxLoss: number;
+  maxProfit: number;
+}
+
+/**
+ * Would this session net be blocked by these limits?
+ *
+ * Pure so the verdict is testable and the UI can show the same state the session
+ * enforces — a warning that disagrees with the guard is worse than none. Equality
+ * blocks on purpose: AT the limit the allowed loss has already been spent.
+ */
+export function limitsVerdict(
+  net: number,
+  limits: PaperLimits,
+): { blocked: boolean; reason?: string } {
+  if (limits.maxLoss > 0 && net <= -limits.maxLoss) {
+    return {
+      blocked: true,
+      reason: `session loss limit reached: ${net.toFixed(2)} of ` +
+        `${limits.maxLoss.toFixed(2)} — no new orders until the net recovers`,
+    };
+  }
+  if (limits.maxProfit > 0 && net >= limits.maxProfit) {
+    return {
+      blocked: true,
+      reason: `session profit target reached: +${net.toFixed(2)} of ` +
+        `${limits.maxProfit.toFixed(2)} — no new orders; close what is open or reset`,
+    };
+  }
+  return { blocked: false };
+}
+
+/**
+ * One rung of the automatic partial-exit ladder (the EA's Partial_exit levels):
+ * once unrealised R reaches `rMultiple` for the first time, `percent` of the
+ * ORIGINAL lots is closed.
+ */
+export interface PartialLevel {
+  rMultiple: number;
+  percent: number;
+}
+
+/**
+ * Validate a partial-exit ladder before it is trusted with a live position.
+ *
+ * Pure so the panel can explain a refused config before anything is open. Every
+ * refusal names the offending row and its numbers, because "level 2 is broken"
+ * is not something a trader can act on.
+ */
+export function validatePartials(
+  levels: readonly PartialLevel[],
+): { ok: boolean; message?: string } {
+  let sum = 0;
+  for (let i = 0; i < levels.length; i++) {
+    const lv = levels[i]!;
+    if (!(lv.rMultiple > 0)) {
+      return {
+        ok: false,
+        message: `partial level ${i + 1}: R multiple must be more than zero ` +
+          `(got ${lv.rMultiple}) — partials take profit, they do not scale into a loss`,
+      };
+    }
+    if (!(lv.percent > 0)) {
+      return {
+        ok: false,
+        message: `partial level ${i + 1} (at ${lv.rMultiple}R): percent must be ` +
+          `more than zero (got ${lv.percent})`,
+      };
+    }
+    sum += lv.percent;
+  }
+  if (sum > 100) {
+    return {
+      ok: false,
+      message: `partial levels add up to ${sum}% of the position — ` +
+        `more than all of it`,
+    };
+  }
+  return { ok: true };
+}
+
 export class TradingSession {
   private engine: AccountEngine;
   private spec: SymbolSpec;
   private symbolId: string;
   private price = 0;
   private time = 0;
+  /** cost overrides while the user has configured any; undefined means symbol defaults */
+  private costs?: PaperCosts;
 
   /** Initial stop distance per position id, captured at open time. */
   private initialRisk = new Map<number, number>();
   /** Tags per position id, so a trade can be filed with what the user intended. */
   private positionTags = new Map<number, string[]>();
+  /**
+   * Lots a position was OPENED with, per position id. Partial levels close a percent
+   * of the ORIGINAL size, not of whatever is left after earlier levels — the ladder
+   * the user configured is expressed against the entry, and shrinking the base would
+   * quietly turn "50/25/25" into something else after the first hit.
+   */
+  private originalLots = new Map<number, number>();
+  /** Partial levels already fired per position id, so each rung fires exactly once. */
+  private partialsFired = new Map<number, Set<number>>();
 
   private listeners = new Set<SessionListener>();
   private journalListeners = new Set<JournalListener>();
@@ -109,11 +225,60 @@ export class TradingSession {
   private blackout: { blocked: boolean; reason?: string } | null = null;
   /** whole-book risk limit in percent of balance; 0 disables the guard */
   private riskLimit = DEFAULT_LIMIT.maxPercent;
+  /** session loss/profit limits; both 0 (the default) leave trading unlimited */
+  private limits: PaperLimits = { maxLoss: 0, maxProfit: 0 };
+  /** automatic partial-exit ladder; null = off */
+  private partials: readonly PartialLevel[] | null = null;
 
-  constructor(symbolId: string, account: Account = DEFAULT_ACCOUNT) {
+  constructor(symbolId: string, account: Account = DEFAULT_ACCOUNT, costs?: PaperCosts) {
     this.symbolId = symbolId;
     this.spec = findSymbol(symbolId);
-    this.engine = new AccountEngine({ account, symbol: this.spec });
+    this.costs = costs;
+    this.engine = this.buildEngine(account);
+  }
+
+  /**
+   * One place that builds the engine, so the constructor, reset() and setCosts()
+   * cannot drift. Cost overrides are per-session state: while set, the engine's
+   * spread and commission come from `this.costs` rather than the symbol defaults.
+   */
+  private buildEngine(account: Account): AccountEngine {
+    const costs = this.costs;
+    return new AccountEngine({
+      account,
+      symbol: {
+        ...this.spec,
+        commissionPerLot: costs?.commissionPerLot ?? this.spec.commissionPerLot,
+      },
+      spread: costs ? costs.spreadPoints * Math.pow(10, -this.spec.digits) : undefined,
+    });
+  }
+
+  /**
+   * Change the cost overrides while trading.
+   *
+   * Refused while anything is open: a spread change would reprice the exits of live
+   * positions (a sell closes at ask), which is money moving without a trade. With a
+   * flat book the balance, the history and the account stay exactly as they were —
+   * only the pricing of the NEXT order changes.
+   */
+  setCosts(costs: PaperCosts): { ok: boolean; message?: string } {
+    if (this.engine.positions.length > 0 || this.orders.length > 0) {
+      return {
+        ok: false,
+        message: "close open positions and cancel pending orders before changing costs — " +
+          "a new spread would misprice the stops already in the market",
+      };
+    }
+    this.costs = costs;
+    const prev = this.engine;
+    const next = this.buildEngine(prev.account);
+    next.balance = prev.balance;
+    next.trades = prev.trades;
+    next.stoppedOut = prev.stoppedOut;
+    this.engine = next;
+    this.emit();
+    return { ok: true };
   }
 
   /**
@@ -122,8 +287,22 @@ export class TradingSession {
    * Exposed so the UI never recomputes money: a second implementation drifts, and the
    * row a trader reads would disagree with the account total.
    */
+  /** Gross floating move plus swap, matching what equity() counts. */
   positionPnl(p: Position, bid: number): number {
     return this.engine.positionPnl(p, bid);
+  }
+
+  /**
+   * Full per-position breakdown for display: gross, commission already charged, swap, and net.
+   *
+   * The row shows `net` (what this position has actually made), while equity counts `gross` because
+   * the commission already left the balance on entry. Two views of one calculation, never two
+   * calculations.
+   */
+  positionBreakdown(p: Position, bid: number): {
+    gross: number; commission: number; swap: number; net: number;
+  } {
+    return this.engine.positionBreakdown(p, bid);
   }
 
   /** Called whenever the displayed price changes, so equity stays live. */
@@ -134,6 +313,16 @@ export class TradingSession {
 
   get specRef(): SymbolSpec {
     return this.spec;
+  }
+
+  /** The spread the engine currently prices with (symbol default or the paper override). */
+  get spread(): number {
+    return this.engine.spread;
+  }
+
+  /** The account leverage the margin math uses; the paper account's, not the symbol's. */
+  get accountLeverage(): number {
+    return this.engine.account.leverage;
   }
 
   get symbol(): string {
@@ -164,6 +353,8 @@ export class TradingSession {
       trades: [...this.engine.trades],
       pendingOrders: [...this.orders],
       orderHistory: [...this.orderHistory],
+      limits: { ...this.limits },
+      sessionNet: this.sessionNet(bid),
     };
   }
 
@@ -196,6 +387,10 @@ export class TradingSession {
     if (this.blackout) {
       return { ok: false, message: `news blackout — ${this.blackout.reason}` };
     }
+    const limitCheck = this.checkLimits();
+    if (limitCheck.blocked) {
+      return { ok: false, message: limitCheck.reason };
+    }
 
     // Reject an order the account cannot margin. Silently opening it would produce
     // a negative free margin and a misleading equity curve.
@@ -223,6 +418,7 @@ export class TradingSession {
     if (!pos) return { ok: false, message: "engine refused the order" };
 
     if (slDistance > 0) this.initialRisk.set(pos.id, slDistance);
+    this.originalLots.set(pos.id, lots);
     if (tags.length > 0) this.positionTags.set(pos.id, tags);
     this.emit();
     return { ok: true };
@@ -295,6 +491,131 @@ export class TradingSession {
 
   get blackoutReason(): string | null {
     return this.blackout?.reason ?? null;
+  }
+
+  /**
+   * Session net: realised change since the starting balance plus what is floating.
+   *
+   * The limits measure THIS number — not the balance alone — because a limit that
+   * ignores open P/L lets a session keep adding risk while floating losses burn
+   * through it. Computed from the engine, like every money number here.
+   */
+  private sessionNet(bid: number): number {
+    return this.engine.balance - this.engine.account.startingBalance +
+      this.engine.floatingPnl(bid);
+  }
+
+  /**
+   * Set the session loss/profit limits. 0 on either side disables it.
+   *
+   * Not refused while positions are open, unlike the cost overrides: the limits read
+   * live money rather than reprice it, and tightening a loss limit with the book open
+   * is exactly when a trader wants it.
+   */
+  setLimits(limits: PaperLimits): void {
+    this.limits = {
+      maxLoss: Math.max(0, limits.maxLoss),
+      maxProfit: Math.max(0, limits.maxProfit),
+    };
+    this.emit();
+  }
+
+  get limitsInForce(): PaperLimits {
+    return { ...this.limits };
+  }
+
+  /**
+   * Would the session limits refuse NEW risk right now?
+   *
+   * Same contract as the blackout: checked in open() and placeOrder(), never in the
+   * close paths — a limit that traps you in an open trade is a different, worse rule.
+   */
+  private checkLimits(): { blocked: boolean; reason?: string } {
+    return limitsVerdict(this.sessionNet(this.price), this.limits);
+  }
+
+  /**
+   * Configure the automatic partial-exit ladder; null disables it.
+   *
+   * Invalid ladders are refused rather than trimmed: a level silently dropped would
+   * leave the trader believing a rung is protecting profit that is not there. A
+   * successful set clears the fired history — the fired flags belong to the ladder
+   * that produced them, and keeping them across a change would let old rung numbers
+   * suppress new levels at the same index.
+   */
+  setAutoPartials(levels: PartialLevel[] | null): { ok: boolean; message?: string } {
+    if (levels === null) {
+      this.partials = null;
+      this.partialsFired.clear();
+      return { ok: true };
+    }
+    const verdict = validatePartials(levels);
+    if (!verdict.ok) return { ok: false, message: verdict.message };
+    this.partials = levels.map((l) => ({ ...l }));
+    this.partialsFired.clear();
+    return { ok: true };
+  }
+
+  /**
+   * Fire any partial levels whose R the bar close has reached, once each.
+   *
+   * R is unrealised P/L over the money the position had at risk at entry (the
+   * captured stop distance times the ORIGINAL lots), read from the engine like every
+   * other money number here. It is measured at the bar CLOSE and filled at the bar
+   * close: an intrabar extreme was never a price the trader could act on, and filling
+   * between the extreme and the close would invent money.
+   *
+   * Runs AFTER the SL/TP pass, deliberately. A stop that took the position out on
+   * this bar has already removed it from the engine, so it cannot also take a
+   * partial; and the trigger is derived from this bar's close, which the same-bar
+   * SL/TP pass must not be influenced by.
+   */
+  private applyAutoPartials(): Trade[] {
+    if (this.partials === null || this.partials.length === 0) return [];
+    const closed: Trade[] = [];
+
+    for (const p of [...this.engine.positions]) {
+      const stopDistance = this.initialRisk.get(p.id);
+      if (!stopDistance || stopDistance <= 0) continue;
+      // no captured risk (entered without a stop): R is undefined, nothing can fire
+      const baseLots = this.originalLots.get(p.id) ?? p.lots;
+      const riskMoney = stopDistance * baseLots * this.spec.contractSize;
+      if (!(riskMoney > 0)) continue;
+
+      const rNow = this.engine.positionPnl(p, this.price) / riskMoney;
+      const fired = this.partialsFired.get(p.id) ?? new Set<number>();
+      let touched = false;
+
+      for (let i = 0; i < this.partials.length; i++) {
+        const lv = this.partials[i]!;
+        if (fired.has(i) || rNow < lv.rMultiple) continue;
+
+        // The rung is spent the moment it triggers, even if the lot step rounds the
+        // close to nothing: retrying every bar cannot make dust closeable.
+        fired.add(i);
+        touched = true;
+
+        // Percent of the ORIGINAL lots, rounded DOWN to the step — rounding up
+        // would close more than the configured percent of the entry.
+        const wanted = baseLots * lv.percent / 100;
+        const stepped = this.spec.lotStep > 0
+          ? Math.floor(wanted / this.spec.lotStep + 1e-9) * this.spec.lotStep
+          : wanted;
+        if (stepped <= 0) continue;
+
+        // The same partial-close path the manual button uses, so the commission
+        // splits proportionally and the journal files it with the same reason.
+        const plan = planPartialClose(p.lots, stepped, this.spec.lotStep);
+        if (!plan.valid) continue;
+        const r = this.engine.closePosition(p, this.price, this.time, "Partial", plan.lots);
+        if (!r) continue;
+        this.fileTrades([r.trade]);
+        closed.push(r.trade);
+      }
+
+      if (touched) this.partialsFired.set(p.id, fired);
+    }
+    return closed;
   }
 
   /**
@@ -447,6 +768,10 @@ export class TradingSession {
     if (this.blackout) {
       return { ok: false, message: `news blackout — ${this.blackout.reason}` };
     }
+    const limitCheck = this.checkLimits();
+    if (limitCheck.blocked) {
+      return { ok: false, message: limitCheck.reason };
+    }
 
     const err = validateOrder(
       {
@@ -571,6 +896,11 @@ export class TradingSession {
     // only causally sound order.
     this.applyTrailing(bar as Bar, this.barIndex);
 
+    // Partial exits run last, same causal rule: the trigger is this bar's close, so
+    // it may only ACT from this bar on, and a position this bar's SL/TP already closed
+    // is out of the engine and cannot take a partial too.
+    closed.push(...this.applyAutoPartials());
+
     this.emit();
     return closed;
   }
@@ -606,6 +936,7 @@ export class TradingSession {
       if (!pos) continue;
 
       if (o.slDistance > 0) this.initialRisk.set(pos.id, o.slDistance);
+      this.originalLots.set(pos.id, o.lots);
       const tags = [...(o.tags ?? []), `${o.kind}-fill`];
       if (tags.length > 0) this.positionTags.set(pos.id, tags);
     }
@@ -632,10 +963,15 @@ export class TradingSession {
       this.journalListeners.forEach((fn) => fn(fresh));
     }
 
-    // risk bookkeeping only matters while the position is open
+    // risk bookkeeping only matters while the position is open. A PARTIAL close also
+    // files a trade for this positionId; wiping the bookkeeping there would leave the
+    // still-open remainder without its initial risk, and the journal would drop its R.
     for (const t of trades) {
+      if (this.engine.positions.some((p) => p.id === t.positionId)) continue;
       this.initialRisk.delete(t.positionId);
       this.positionTags.delete(t.positionId);
+      this.originalLots.delete(t.positionId);
+      this.partialsFired.delete(t.positionId);
     }
   }
 
@@ -681,12 +1017,11 @@ export class TradingSession {
     // the position was opened on is not re-processed: it already happened, and testing the
     // restored stop against it stops the position out the instant it comes back.
     this.restoredThroughBar = Math.max(-1, state.revealed - 1);
-    this.engine = new AccountEngine({
-      account: {
-        ...DEFAULT_ACCOUNT,
-        startingBalance: state.startingBalance,
-      },
-      symbol: this.spec,
+    // The restored balance is validated against this starting balance, and the account's
+    // own leverage/mode (which the export does not carry) stay as the session has them.
+    this.engine = this.buildEngine({
+      ...this.engine.account,
+      startingBalance: state.startingBalance,
     });
     this.engine.balance = state.balance;
     this.engine.stoppedOut = state.stoppedOut;
@@ -702,20 +1037,35 @@ export class TradingSession {
     // position with no stop keeps risk 0 — the journal already shows "—" for that.
     this.initialRisk.clear();
     this.positionTags.clear();
+    this.partialsFired.clear();
+    this.originalLots.clear();
     for (const p of this.engine.positions) {
       const d = p.sl === null ? 0 : Math.abs(p.entryPrice - p.sl);
       this.initialRisk.set(p.id, d);
       this.positionTags.set(p.id, []);
+      // the original size is not in the position either; the remaining lots are the
+      // honest base for partials that fire from here on
+      this.originalLots.set(p.id, p.lots);
     }
 
     this.pending = [];
     this.emit();
   }
 
-  reset(account: Account = DEFAULT_ACCOUNT): void {
-    this.engine = new AccountEngine({ account, symbol: this.spec });
+  /**
+   * Reset the account, the order book and all history. Used by "new session".
+   *
+   * `costs`, when given, replaces the cost overrides; omitted, the current overrides
+   * survive the reset — a new session should not silently revert to symbol defaults
+   * the user had deliberately changed.
+   */
+  reset(account: Account = DEFAULT_ACCOUNT, costs?: PaperCosts): void {
+    if (costs !== undefined) this.costs = costs;
+    this.engine = this.buildEngine(account);
     this.initialRisk.clear();
     this.positionTags.clear();
+    this.originalLots.clear();
+    this.partialsFired.clear();
     this.pending = [];
     // The order book must go too: a stale limit left over from the previous session
     // would fire against the fresh account the moment replay resumes.

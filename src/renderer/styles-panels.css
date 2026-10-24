@@ -2,16 +2,16 @@
 /* ---- rail tabs ---- */
 .rail-tabs { display: flex; gap: 2px; margin-bottom: 8px; }
 .rail-tab {
-  flex: 1; background: #22262f; border: 1px solid var(--line); color: var(--tx-2);
+  flex: 1; background: var(--bg-2); border: 1px solid var(--line); color: var(--tx-2);
   border-radius: 4px; padding: 4px 0; font: inherit; font-size: 11px; cursor: pointer;
   text-transform: uppercase; letter-spacing: 0.5px;
 }
-.rail-tab.active { background: var(--bg-2); color: var(--accent); border-color: rgba(240,185,11,0.33); }
+.rail-tab.active { background: var(--bg-2); color: var(--accent); border-color: var(--accent); }
 
 /* ---- badges ---- */
 .badge { font-size: 10px; padding: 2px 6px; border-radius: 3px; letter-spacing: 0.6px; }
-.badge.off { background: #3a2f12; color: var(--accent); }
-.badge.on { background: #123a2c; color: var(--up); }
+.badge.off { background: var(--bg-2); color: var(--tx-1); }
+.badge.on { background: color-mix(in srgb, var(--up) 15%, transparent); color: var(--up); }
 
 /* ---- data panel ---- */
 .switch-row { display: flex; align-items: center; gap: 6px; padding: 6px 0; }
@@ -24,16 +24,16 @@
 .import { margin: 6px 0; }
 .feed-status { margin-top: 8px; border-top: 1px solid var(--line); padding-top: 8px; }
 .status-note { color: var(--tx-2); font-size: 11px; margin: 6px 0 0; line-height: 1.35; }
-.warn { color: var(--accent); }
+.warn { color: var(--warn); }
 
 /* ---- code + panels ---- */
 .strategy-panel, .journal-panel { display: flex; flex-direction: column; gap: 6px; }
 .tabs { display: flex; gap: 2px; flex-wrap: wrap; }
 .tab {
-  background: #22262f; border: 1px solid var(--line); color: var(--tx-2);
+  background: var(--bg-2); border: 1px solid var(--line); color: var(--tx-2);
   border-radius: 3px; padding: 3px 6px; font-size: 11px; cursor: pointer;
 }
-.tab.active { color: var(--accent); border-color: rgba(240,185,11,0.33); }
+.tab.active { color: var(--accent); border-color: var(--accent); }
 
 .code {
   width: 100%; min-height: 150px; background: var(--bg-0); color: var(--tx-0);
@@ -65,7 +65,8 @@ table.grid td { padding: 2px 4px; border-bottom: 1px solid var(--line); }
 table.grid td:nth-child(n+2) { text-align: right; }
 
 .errors { list-style: none; margin: 6px 0 0; padding: 6px; max-height: 120px; overflow-y: auto;
-  background: #2a1a1a; border: 1px solid #4a2a2a; border-radius: 4px; }
+  background: color-mix(in srgb, var(--dn) 10%, var(--bg-0));
+  border: 1px solid color-mix(in srgb, var(--dn) 30%, transparent); border-radius: 4px; }
 .errors li { color: var(--dn); font-size: 11px; padding: 1px 0; }
 
 .inputs h4 { margin: 8px 0 4px; font-size: 11px; color: var(--tx-2); text-transform: uppercase; }
@@ -77,3 +78,93 @@ table.grid td:nth-child(n+2) { text-align: right; }
 }
 
 .journal-panel h3 { margin-top: 10px; }
+
+/* ---- downloader ----
+   The panel's markup has carried these class names since it was written, with no CSS
+   behind them: the progress bar rendered as an invisible zero-height div, so a
+   multi-hour download showed nothing between pressing Go and the final report.
+   Track/fill, a two-column date range, a primary action and a report box. */
+.dl-range {
+  display: flex;
+  gap: 8px;
+}
+
+.dl-range .field { flex: 1; min-width: 0; }
+
+/* month + year sit on one line; the selects share the panel's control styling */
+.dl-row {
+  display: flex;
+  gap: 4px;
+}
+
+.dl-row select {
+  flex: 1;
+  min-width: 0;
+  background: var(--bg-2);
+  color: var(--tx-0);
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-sm);
+  padding: 4px;
+  font: inherit;
+}
+
+/* the MT source's from/to dates */
+.dl-date {
+  width: 100%;
+  background: var(--bg-2);
+  color: var(--tx-0);
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-sm);
+  padding: 4px;
+  font: inherit;
+  color-scheme: dark;
+}
+
+/* progress: a quiet 4px track with an accent fill. The fill width is set inline. */
+.dl-bar {
+  height: 4px;
+  border-radius: 2px;
+  background: var(--bg-2);
+  overflow: hidden;
+  margin: 8px 0 4px;
+}
+
+.dl-fill {
+  height: 100%;
+  border-radius: 2px;
+  background: var(--accent);
+  transition: width 200ms linear;
+}
+
+/* the one primary action on the panel */
+.dl-go {
+  width: 100%;
+  background: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: var(--r-sm);
+  color: #fff;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 6px 10px;
+  cursor: pointer;
+}
+
+.dl-go:hover:not(:disabled) { filter: brightness(1.1); }
+.dl-go:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.dl-sep {
+  height: 1px;
+  background: var(--line);
+  margin: 14px 0 10px;
+}
+
+/* the post-download quality report, boxed so it reads as one verdict */
+.dl-report {
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-sm);
+  background: var(--bg-0);
+  padding: 8px 10px;
+  margin: 10px 0;
+}
+

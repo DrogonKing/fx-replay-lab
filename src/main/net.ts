@@ -38,7 +38,7 @@ export function bridgeUrlAllowed(url: string): boolean {
     const u = new URL(url);
     if (u.protocol !== "http:") return false;
     if (u.hostname !== "127.0.0.1" && u.hostname !== "localhost") return false;
-    return ["/health", "/symbols", "/timeframes", "/candles", "/login"].includes(u.pathname);
+    return ["/health", "/symbols", "/timeframes", "/candles", "/login", "/shutdown"].includes(u.pathname);
   } catch {
     return false;
   }
@@ -52,6 +52,47 @@ export function hostAllowed(url: string): boolean {
   } catch {
     return false;
   }
+}
+
+/** Bodies larger than this are truncated rather than buffered. 8MB is far above any real payload. */
+const MAX_BODY_BYTES = 8 * 1024 * 1024;
+
+/**
+ * Read a response body, stopping at MAX_BODY_BYTES.
+ *
+ * Truncation is reported to the caller as a parse failure (the text will not be valid JSON), which
+ * the adapters already handle as a bad payload - an honest outcome, unlike silently accepting 2GB.
+ */
+async function readCapped(res: Response, controller: AbortController): Promise<string> {
+  const reader = res.body?.getReader();
+  if (!reader) return await res.text();
+
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (!value) continue;
+      total += value.byteLength;
+      if (total > MAX_BODY_BYTES) {
+        chunks.push(value.subarray(0, Math.max(0, value.byteLength - (total - MAX_BODY_BYTES))));
+        controller.abort();
+        break;
+      }
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+
+  const merged = new Uint8Array(chunks.reduce((n, c) => n + c.byteLength, 0));
+  let at = 0;
+  for (const c of chunks) {
+    merged.set(c, at);
+    at += c.byteLength;
+  }
+  return new TextDecoder().decode(merged);
 }
 
 /**
@@ -77,7 +118,19 @@ export async function fetchJson(
       headers,
       signal: controller.signal,
     });
-    const text = await res.text();
+
+    /*
+      Read the body with a cap and a deadline.
+
+      Two bugs lived here:
+        - res.text() buffered whatever arrived, with no limit. One misbehaving provider returning a
+          multi-gigabyte body would take the whole app down, and nothing in the codebase would point
+          at why.
+        - the abort timer used to be cleared as soon as the headers landed, so a server that sent
+          headers and then stalled held the request open forever with the timeout already cancelled.
+      The timer now stays armed until the body is fully read, and the read itself stops at MAX_BODY.
+    */
+    const text = await readCapped(res, controller);
     let body: unknown = text;
     try {
       body = JSON.parse(text);
@@ -85,10 +138,12 @@ export async function fetchJson(
       // leave as text; the adapter reports bad-payload
     }
     const retry = res.headers.get("retry-after");
+    const retrySeconds = retry === null ? NaN : Number(retry);
     return {
       status: res.status,
       body,
-      ...(retry ? { retryAfterSeconds: Number(retry) } : {}),
+      // an unparseable Retry-After is not "retry in NaN seconds"
+      ...(Number.isFinite(retrySeconds) && retrySeconds > 0 ? { retryAfterSeconds: retrySeconds } : {}),
     };
   } finally {
     clearTimeout(timer);

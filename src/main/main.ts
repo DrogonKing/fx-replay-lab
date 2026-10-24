@@ -22,6 +22,10 @@ import { bridgeLogin, fetchBridgeCandles, fetchOandaCandles, testBridge } from "
 import {
   resolveBridgePaths, startBridge, stopBridge, bridgeRunning, bridgePort, bridgeLog,
 } from "./bridge-process.js";
+import { openCandleStore, type CandleStore } from "./mt-store.js";
+import {
+  mtStatus, mtLatest, mtDownload, cancelMtDownload, bridgeShutdown, BRIDGE_URL,
+} from "./mt-ipc.js";
 import {
   handleBacktest, handleOptimize, handleWalkForward, handleMonteCarlo,
   handlePine, handlePineParse, type RunRequest,
@@ -30,6 +34,7 @@ import type { GridAxis, RankMetric } from "../core/optimize.js";
 
 const isDev = !app.isPackaged;
 let db: Db | null = null;
+let candleStore: CandleStore | null = null;
 
 function dataDir(): string {
   const dir = path.join(app.getPath("userData"), "fx-replay-lab");
@@ -91,6 +96,7 @@ function createWindow(): BrowserWindow {
 
 app.whenReady().then(() => {
   db = openDatabase(path.join(dataDir(), "fx-replay-lab.db"));
+  candleStore = openCandleStore(path.join(dataDir(), "history.db"));
   ipcMain.handle("db:loadSymbols", () =>
     db?.loadSymbols() ?? { raw: null, updatedAt: null });
   ipcMain.handle("db:saveSymbols", (_e, symbols: unknown) => {
@@ -301,6 +307,55 @@ app.whenReady().then(() => {
     }
   });
 
+  // ---- MT data service (v2) ----
+  // Live health for the toolbar badge: alive-but-not-logged-in is a state the
+  // UI must be able to show, so errors and health are both honest results.
+  ipcMain.handle("mt:status", async () => mtStatus());
+
+  /** Poll-sized slice of recent bars for the live chart (one request per tick). */
+  ipcMain.handle("mt:latest", async (_e, req: {
+    symbol: string; timeframe: string; count: number;
+  }) => mtLatest(req));
+
+  /**
+   * Chunked history download from the logged-in MT account into the local store.
+   * Progress is pushed, not polled, and a cancelled run keeps everything already
+   * stored — the next call resumes at the first incomplete chunk.
+   */
+  ipcMain.handle("mt:download", async (e, req: {
+    symbol: string; timeframe: string; from: number; to: number; source: string;
+  }) => {
+    const store = candleStore;
+    if (!store) return { ok: false, state: null, error: "candle store not open" };
+    return mtDownload({
+      ...req,
+      store,
+      onProgress: (p) => {
+        if (!e.sender.isDestroyed()) e.sender.send("mt:downloadProgress", p);
+      },
+    });
+  });
+
+  ipcMain.handle("mt:cancelDownload", () => {
+    cancelMtDownload();
+    return { ok: true };
+  });
+
+  /** What is already on disk, for the downloader's "you have this" hint. */
+  ipcMain.handle("mt:catalog", () => candleStore?.coverage() ?? []);
+
+  /** Stored bars for offline replay. No network anywhere in this path. */
+  ipcMain.handle("mt:load", (_e, req: {
+    symbol: string; timeframe: string; from?: number; to?: number;
+  }) =>
+    candleStore?.load(req.symbol, req.timeframe, req.from, req.to) ?? [],
+  );
+
+  ipcMain.handle("mt:deleteData", (_e, req: { symbol: string; timeframe: string }) => {
+    candleStore?.delete(req.symbol, req.timeframe);
+    return { ok: true };
+  });
+
   ipcMain.handle("db:loadToolConfigs", () =>
     db?.loadToolConfigs() ?? { raw: null, updatedAt: null });
   ipcMain.handle("db:saveToolConfigs", (_e, configs: unknown) => {
@@ -423,4 +478,31 @@ app.on("window-all-closed", () => {
   db?.close();
   db = null;
   if (process.platform !== "darwin") app.quit();
+});
+
+/**
+ * Clean shutdown of everything the app started.
+ *
+ * The bridge holds the ONLY terminal session, and on Windows child.kill() is
+ * TerminateProcess — the bridge's own `finally: mt5.shutdown()` would never
+ * run, leaving a hidden terminal process orphaned on the user's machine. So
+ * the quit is held open just long enough to ask it to release the terminal
+ * itself (up to 3 s), then the process is killed and the store closed.
+ */
+let quitting = false;
+app.on("will-quit", (event) => {
+  if (quitting) return;
+  event.preventDefault();
+  quitting = true;
+  void (async () => {
+    try {
+      await bridgeShutdown(BRIDGE_URL);
+    } catch {
+      // bridge already gone: nothing to release
+    }
+    stopBridge();
+    candleStore?.close();
+    candleStore = null;
+    app.quit();
+  })();
 });

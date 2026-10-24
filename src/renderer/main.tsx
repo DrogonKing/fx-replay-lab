@@ -9,6 +9,7 @@ import "./styles-trade.css";
 import "./styles-rtl.css";
 import "./styles-redesign.css";
 import "./styles-redesign-fixes.css";
+import "./ui/tv.css";
 import { LanguageProvider } from "./i18n-context.js";
 
 const el = document.getElementById("root");

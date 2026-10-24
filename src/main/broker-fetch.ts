@@ -158,6 +158,11 @@ export async function testBridge(url: string): Promise<{
  * is NOT echoed into any error string, because an error message is the most common way a secret
  * ends up in a log.
  */
+/** A cold-start login can take ~2.5 minutes: the bridge launches the terminal, waits for
+ *  its IPC to come up (first server connect + cache rebuild), then logs in. 60 s aborted
+ *  real logins mid-flight and reported them as network errors. */
+const LOGIN_TIMEOUT_MS = 180_000;
+
 export async function bridgeLogin(req: {
   url: string; login: string; password: string; server: string;
 }): Promise<{ ok: boolean; account?: string; symbols?: number; error?: string }> {
@@ -179,7 +184,7 @@ export async function bridgeLogin(req: {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ login: req.login, password: req.password, server: req.server }),
-      signal: AbortSignal.timeout(CANDLE_TIMEOUT_MS),
+      signal: AbortSignal.timeout(LOGIN_TIMEOUT_MS),
     });
     const body = (await res.json()) as { ok?: boolean; account?: string; symbols?: number; error?: string };
     if (body.ok === true) {

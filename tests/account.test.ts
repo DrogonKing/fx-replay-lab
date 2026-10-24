@@ -53,9 +53,13 @@ describe("pricing and fills", () => {
   it("computes floating P/L with the exit side of the spread", () => {
     const e = engine();
     const p = e.open({ side: "buy", lots: 1, slDistance: 0, tpDistance: 0, price: 2000, time: 1 })!;
-    // entry 2000.2; closing at bid 2001 pays (2001 - 2000.2) * 100 * 1 = 80
-    // minus the 3 commission already charged: reported pnl is 77
-    expect(e.positionPnl(p, 2001)).toBeCloseTo(77, 9);
+    // entry 2000.2; closing at bid 2001 pays (2001 - 2000.2) * 100 * 1 = 80.
+    //
+    // The commission is NOT in this number: open() already took it from the balance, so including it
+    // here charged it twice and made equity disagree with the balance you would have by closing.
+    // The net-of-commission figure is positionBreakdown().net, asserted separately below.
+    expect(e.positionPnl(p, 2001)).toBeCloseTo(80, 9);
+    expect(e.positionBreakdown(p, 2001).net).toBeCloseTo(77, 9);
   });
 
   it("does not double-count commission when a trade closes", () => {
@@ -203,8 +207,14 @@ describe("equity, margin and stop-out", () => {
   it("equity = balance + floating", () => {
     const e = engine();
     e.open({ side: "buy", lots: 1, slDistance: 0, tpDistance: 0, price: 2000, time: 1 });
-    // balance 9997; at bid 2005 the position is worth (2005-2000.2)*100 - 3 = 477
-    expect(e.equity(2005)).toBeCloseTo(9997 + 477, 6);
+    // balance 9997; at bid 2005 the gross move is (2005-2000.2)*100 = 480, so equity is 10477.
+    // The invariant that matters: equity equals the balance you would have if you closed right now.
+    expect(e.equity(2005)).toBeCloseTo(9997 + 480, 6);
+
+    const closed = engine();
+    closed.open({ side: "buy", lots: 1, slDistance: 0, tpDistance: 0, price: 2000, time: 1 });
+    closed.closeAll(2005, 2);
+    expect(e.equity(2005)).toBeCloseTo(closed.balance, 6);
   });
 
   it("computes used margin from notional / leverage", () => {
@@ -233,8 +243,10 @@ describe("sell side symmetry", () => {
   it("profiting on a sell when price falls", () => {
     const e = engine();
     const p = e.open({ side: "sell", lots: 1, slDistance: 0, tpDistance: 0, price: 2000, time: 1 })!;
-    // entry 2000 (bid); exit at ask of 1990 = 1990.2 -> (2000 - 1990.2) * 100 = 980
-    expect(e.positionPnl(p, 1990)).toBeCloseTo(980 - 3, 6);
+    // entry 2000 (bid); exit at ask of 1990 = 1990.2 -> (2000 - 1990.2) * 100 = 980 gross.
+    // Commission is already out of the balance, so it is not subtracted again here.
+    expect(e.positionPnl(p, 1990)).toBeCloseTo(980, 6);
+    expect(e.positionBreakdown(p, 1990).net).toBeCloseTo(977, 6);
   });
 
   it("hits TP on a sell when the low reaches it", () => {

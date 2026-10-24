@@ -20,22 +20,21 @@ The renderer never opens a socket. Live data goes through IPC to the main proces
 which only reaches an allow-list of HTTPS hosts. Offline mode simply never calls it,
 so "no network" is structural rather than a flag someone can forget.
 
-## Verified state
+## Verified state (v2, on Windows)
 
 ```
-796 unit tests, 32 files ..................... pass
+1345 unit tests, 55 files .................... pass
 strict typecheck (noUncheckedIndexedAccess) ... clean
-offline verification ......................... PASS
-CI config validation ......................... PASS
-headless boot + DOM assertions ............... pass
-real Yahoo fetch through the UI .............. 5,821 bars, badge LIVE
-real backtest through the UI ................. 132 trades, net -1,170.60
-Pine script through the UI ................... 2 series, 9 shapes
+build (renderer + main) ...................... pass
+boot smoke: window opens, no errors .......... pass
+bridge HTTP suite (stubbed MetaTrader5) ...... 21/21 pass
+bridge selftest (real package, no terminal) .. pass (terminal checks SKIP)
 ```
 
-Those backtest numbers are a **negative result for a plain EMA(9/21) crossover on
-5-minute gold** and are reported as such — 28% win rate, profit factor 0.77 over
-132 trades. The engine is not tuned to look good.
+The v1 Linux smoke suite (bash/Xvfb) was removed with the v2 prune — this repo
+now lives on Windows, where the MetaTrader integration actually runs. A
+Windows-capable e2e harness is future work; today the app is verified by the
+suite above plus manual runs.
 
 ## What is built
 
@@ -142,32 +141,22 @@ Full per-item status: `docs/CHECKLIST.md`.
 ```bash
 npm install
 npx electron-rebuild -f -w better-sqlite3   # required: native ABI must match Electron
-npm test
+npm test                                    # runs under the Node ABI (before rebuild)
 npm run build
 npm start
 ```
 
-Verification scripts:
+Order matters on a fresh clone: `npm test` first (Node ABI), then
+`electron-rebuild`, then `npm start` (Electron ABI) — better-sqlite3 has one
+binary and it cannot satisfy both at once.
+
+Verification scripts that remain:
 
 ```bash
-node scripts/verify-offline.mjs    # prove the bundle is offline-clean
-node scripts/verify-workflow.mjs   # validate CI + packaging config
-bash scripts/headless-smoke.sh     # boot under Xvfb and assert the DOM
-bash scripts/live-smoke.sh         # real network + real backtest via the UI
-bash scripts/pine-smoke.sh         # Pine through IPC
-bash scripts/draw-smoke.sh         # real pointer events paint; undo repaints
-bash scripts/persist-smoke.sh      # drawings survive kill -9 + relaunch
-bash scripts/live-session-smoke.sh # open position survives SIGKILL, restore, dismiss
-bash scripts/risk-smoke.sh         # risk sizing, refusal, scaling, placed order matches
-bash scripts/book-risk-smoke.sh    # book readout, default-off, refusal, pending, closing
-bash scripts/journal-smoke.sh      # journal survives kill -9 + relaunch
-bash scripts/trade-smoke.sh        # trade -> SL fires -> journal entry, end to end
-bash scripts/orders-smoke.sh       # limit fills, invalid side refused, OCO pair
-bash scripts/position-smoke.sh     # level lines, real SL drag, break-even
-bash scripts/trailing-smoke.sh     # trail tightens, never closes early, partial close
-bash scripts/news-smoke.sh         # calendar import, persist, blackout refuses an order
-bash scripts/i18n-smoke.sh         # Persian switch, RTL mirror, Latin digits, reload
-bash scripts/sessions-smoke.sh     # session bands paint, DST shift, attribution adds up
+node scripts/verify-offline.mjs            # prove the bundle is offline-clean
+node scripts/verify-workflow.mjs           # validate CI + packaging config
+bridge\python\python.exe bridge\test-bridge-http.py   # bridge v2 HTTP suite (stubbed MT5)
+bridge\python\python.exe bridge\mt5-bridge.py --selftest
 ```
 
 ## Docs

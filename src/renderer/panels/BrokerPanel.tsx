@@ -15,6 +15,7 @@
  */
 import React, { useCallback, useEffect, useState } from "react";
 import type { Candle } from "../../core/types.js";
+import { latinNum } from "../../core/format.js";
 import { useI18n } from "../i18n-context.js";
 
 /** The slice of the preload bridge this panel needs. Everything else stays out of reach. */
@@ -124,7 +125,7 @@ export function BrokerPanel({ onStatus, onLoad }: BrokerPanelProps): JSX.Element
     }
     onLoad(`${symbol} M1 (MT5)`, res.candles);
     setLoadFailed(false);
-    setLoadNote(`${res.candles.length.toLocaleString()} bars loaded into the chart`);
+    setLoadNote(`${latinNum(res.candles.length)} bars loaded into the chart`);
   }, [onLoad, onStatus, t]);
 
   const doConnect = useCallback(async (): Promise<void> => {

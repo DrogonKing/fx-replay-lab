@@ -1,0 +1,417 @@
+/*
+ * Terminal shell primitives: the TradingView-style anatomy introduced with the
+ * toolbar quick row, the floating replay bar, the bottom dock, the sidebar header
+ * and strip, and the floating tool-settings dialog.
+ *
+ * Everything uses logical properties so one sheet serves LTR and RTL; numbers and
+ * symbols are kept Latin by the .num utility in styles.css.
+ */
+
+/* ---------------------------------------------------------- toolbar pieces */
+
+/* quick timeframe row: pinned frames + "⋯" + custom box */
+.tf-quick {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  flex-shrink: 0;
+}
+
+.tf-q {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
+  color: var(--tx-1);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  padding: 4px 7px;
+}
+
+.tf-q:hover:not(:disabled) { background: var(--bg-2); color: var(--tx-0); }
+
+.tf-q.on {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: var(--accent);
+}
+
+.tf-q:disabled { color: var(--tx-3); cursor: not-allowed; }
+
+.custom-tf-input {
+  background: var(--bg-2);
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-sm);
+  color: var(--tx-0);
+  font: inherit;
+  font-size: 12px;
+  padding: 4px 6px;
+  width: 44px;
+}
+
+/* chart-type menu internals */
+.chart-type-list { display: flex; flex-direction: column; }
+
+.chart-type-list .tf-pick {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+}
+
+.chart-type-list .fi-icon { width: 16px; text-align: center; color: var(--tx-2); }
+
+.chart-menu-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--tx-0);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 5px 6px;
+}
+
+/* plain toolbar button (the Indicators button) */
+.tb-btn {
+  background: var(--bg-2);
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-sm);
+  color: var(--tx-1);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  padding: 4px 9px;
+}
+
+.tb-btn:hover { background: var(--bg-3); color: var(--tx-0); }
+
+/* ------------------------------------------------------- floating replay bar */
+
+/*
+  Pinned bottom-centre OVER the chart, only in replay mode. Absolute inside the
+  chart area; the chart's own price scale stays reachable on both edges.
+*/
+.replay-bar {
+  position: absolute;
+  bottom: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 12;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  background: color-mix(in srgb, var(--bg-1) 94%, transparent);
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-pill);
+  box-shadow: var(--shadow-menu);
+  padding: 5px 14px;
+  max-width: min(760px, calc(100% - 32px));
+}
+
+.replay-bar button {
+  background: transparent;
+  border: 0;
+  border-radius: var(--r-sm);
+  color: var(--tx-1);
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1;
+  padding: 3px 6px;
+}
+
+.replay-bar button:hover { background: var(--bg-2); color: var(--tx-0); }
+
+.replay-play.on { color: var(--accent); }
+
+.replay-sep {
+  width: 1px;
+  height: 18px;
+  background: var(--line-2);
+  flex: 0 0 auto;
+}
+
+.replay-speed {
+  background: var(--bg-2);
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-sm);
+  color: var(--tx-0);
+  font: inherit;
+  font-size: 12px;
+  padding: 2px 4px;
+}
+
+.replay-slider { width: 200px; margin: 0; }
+
+.replay-pos,
+.replay-clock {
+  color: var(--tx-2);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.replay-clock { color: var(--tx-1); }
+
+/* --------------------------------------------------------------- bottom dock */
+
+.dock {
+  grid-area: dock;
+  background: var(--bg-1);
+  border-top: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.dock-tabs {
+  display: flex;
+  align-items: stretch;
+  gap: var(--space-5);
+  padding: 0 var(--space-4);
+  border-bottom: 1px solid var(--line);
+  flex: 0 0 auto;
+  overflow-x: auto;
+}
+
+.dock-tab {
+  background: transparent;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  color: var(--tx-2);
+  cursor: pointer;
+  font: inherit;
+  font-size: 11px;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  padding: 7px 2px 5px;
+  white-space: nowrap;
+}
+
+.dock-tab:hover { color: var(--tx-0); }
+
+.dock-tab.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
+.dock-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: var(--space-3) var(--space-4);
+}
+
+.dock-tables h3 {
+  margin: var(--space-4) 0 var(--space-2);
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.7px;
+  color: var(--tx-2);
+}
+
+.dock-tables h3:first-child { margin-top: 0; }
+
+.dock-tables button {
+  background: var(--bg-2);
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-sm);
+  color: var(--tx-1);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  padding: 4px 10px;
+  margin: var(--space-2) 0;
+}
+
+.dock-tables button:hover { background: var(--bg-3); color: var(--tx-0); }
+
+/* ------------------------------------------------------------------- sidebar */
+
+/* the sidebar body manages its own scrolling, so the panel itself must not */
+.panel {
+  padding: var(--space-4);
+  overflow: hidden;
+}
+
+.side-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding-bottom: var(--space-3);
+  margin-bottom: var(--space-3);
+  border-bottom: 1px solid var(--line);
+  flex: 0 0 auto;
+}
+
+.side-conn {
+  color: var(--tx-2);
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.side-body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  gap: 0;
+}
+
+/* compact vertical tab strip along the sidebar's inline-start edge */
+.rail-tabs.vert {
+  flex-direction: column;
+  flex-wrap: nowrap;
+  align-items: stretch;
+  border-inline-end: 1px solid var(--line);
+  background: transparent;
+  border-radius: 0;
+  border-top: 0;
+  border-inline-start: 0;
+  border-bottom: 0;
+  padding: var(--space-2);
+  gap: var(--space-1);
+  overflow-y: auto;
+  flex: 0 0 auto;
+  max-width: 96px;
+}
+
+.rail-tabs.vert .rail-tab {
+  text-align: start;
+  white-space: normal;
+  font-size: 10px;
+  padding: 6px 8px;
+  min-height: 0;
+}
+
+.rail-tabs.vert .rail-tab.active { box-shadow: inset 2px 0 0 var(--accent); }
+
+.side-strip-sep {
+  height: 1px;
+  background: var(--line);
+  margin: var(--space-2) 0;
+  flex: 0 0 auto;
+}
+
+.side-content {
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+  padding-inline-start: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+/* ------------------------------------------------ floating tool-settings dialog */
+
+.tool-settings-float {
+  position: absolute;
+  top: 44px;
+  inset-inline-start: var(--space-4);
+  z-index: 20;
+  width: min(330px, calc(100% - 24px));
+  max-height: calc(100% - 60px);
+  overflow-y: auto;
+  background: var(--bg-1);
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-menu);
+  padding: var(--space-4);
+}
+
+/* inside the float, the settings block is the whole dialog, not a sidebar section */
+.tool-settings-float .tool-settings {
+  border-top: 0;
+  margin-top: 0;
+  padding-top: 0;
+}
+
+/* ------------------------------------------------------------- login overlay */
+
+/*
+  Full-window overlay: the shell (chart included) exists behind it, dimmed. Choosing
+  a path reveals the terminal rather than waiting for it to boot.
+*/
+.login-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: color-mix(in srgb, var(--bg-0) 68%, transparent);
+  backdrop-filter: blur(2px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow-y: auto;
+  padding: var(--space-6);
+}
+
+.login-card {
+  width: min(440px, 100%);
+  background: var(--bg-1);
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow);
+  padding: var(--space-6);
+}
+
+.login-title {
+  color: var(--tx-0);
+  font-size: 18px;
+  letter-spacing: 0.3px;
+  margin: 0 0 var(--space-1);
+}
+
+.login-sub {
+  color: var(--tx-2);
+  font-size: 12px;
+  margin: 0 0 var(--space-5);
+}
+
+.login-path > b {
+  display: block;
+  color: var(--tx-0);
+  font-size: 12.5px;
+  margin-bottom: var(--space-1);
+}
+
+.login-path .msg { margin-block-end: var(--space-3); }
+
+/* the overlay is not inside .panel, so its inputs need their own theme */
+.login-card input {
+  background: var(--bg-0);
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-sm);
+  color: var(--tx-0);
+  font: inherit;
+  font-size: 12px;
+  padding: 5px 7px;
+}
+
+.login-card input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: var(--focus-ring);
+}
+
+.login-card button {
+  background: var(--bg-2);
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-sm);
+  color: var(--tx-1);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  padding: 6px 10px;
+}
+
+.login-card button:hover:not(:disabled) {
+  background: var(--bg-3);
+  color: var(--tx-0);
+}
+
+.login-card button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.login-btn { flex: 1 1 auto; }

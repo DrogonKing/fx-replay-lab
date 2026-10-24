@@ -135,11 +135,41 @@ export class AccountEngine {
 
   // ------------------------------------------------------------- positions
 
-  /** Floating P/L of one position at the given bid price. */
+  /**
+   * Floating P/L of one position at the given bid price.
+   *
+   * Returns the price result plus accrued swap, and deliberately does NOT subtract commission:
+   * open() already deducted it from the balance, so subtracting it here would charge it twice and
+   * make equity() disagree with the balance you would have if you closed right now.
+   *
+   * That disagreement was real and consequential: marginState() divides equity by used margin, so a
+   * one-commission error moved both the margin-call and the stop-out thresholds, firing them early.
+   *
+   * The gross-and-commission breakdown is still available via `positionBreakdown()` for display.
+   */
   positionPnl(p: Position, bidPrice: number): number {
     const exit = this.exitPrice(p.side, bidPrice);
     const delta = p.side === "buy" ? exit - p.entryPrice : p.entryPrice - exit;
-    return moneyFromPriceDelta(delta, p.lots, this.symbol) - p.commission + p.swap;
+    return moneyFromPriceDelta(delta, p.lots, this.symbol) + p.swap;
+  }
+
+  /**
+   * The full picture for a position row: gross move, commission already spent, swap, and net.
+   * The panel shows this; equity uses positionPnl(). One calculation, two views - never two
+   * calculations of the same money.
+   */
+  positionBreakdown(p: Position, bidPrice: number): {
+    gross: number; commission: number; swap: number; net: number;
+  } {
+    const exit = this.exitPrice(p.side, bidPrice);
+    const delta = p.side === "buy" ? exit - p.entryPrice : p.entryPrice - exit;
+    const gross = moneyFromPriceDelta(delta, p.lots, this.symbol);
+    return {
+      gross,
+      commission: p.commission,
+      swap: p.swap,
+      net: gross - p.commission + p.swap,
+    };
   }
 
   /** Sum of floating P/L. */
@@ -370,8 +400,21 @@ export class AccountEngine {
     return closed;
   }
 
-  /** Deposit or withdraw; positive adds. */
+  /**
+   * Deposit or withdraw; positive adds.
+   *
+   * A deposit clears a stop-out. A stop-out is a margin event, not bankruptcy: a real terminal lets
+   * you fund the account and carry on. Leaving the flag set locked the account permanently, with no
+   * way for the user to see why - "trading is halted" forever, even after adding money.
+   *
+   * A withdrawal deliberately does NOT clear it: taking money out of a stopped-out account is not a
+   * recovery.
+   */
   adjustBalance(amount: number): void {
     this.balance += amount;
+    if (amount > 0 && this.stoppedOut) {
+      this.stoppedOut = false;
+      this.marginCalled = false;
+    }
   }
 }

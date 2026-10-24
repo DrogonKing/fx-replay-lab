@@ -93,6 +93,17 @@ export function bridgeLog(): string {
 export async function startBridge(port = bridgePort(), timeoutMs = 25_000): Promise<{ ok: boolean; error?: string }> {
   if (child && child.exitCode === null) return { ok: true };
 
+  /*
+    If something is already answering on the port, use it.
+
+    Spawning unconditionally was a real bug: a bridge left running by a previous session (or by a
+    second install) holds the port, the new process dies on EADDRINUSE, and Connect reports
+    "the bridge exited on startup" while a perfectly healthy bridge is listening. Discovery before
+    start, always.
+  */
+  const already = await probeHealth(port);
+  if (already) return { ok: true };
+
   const paths = resolveBridgePaths();
   if (!paths.available) return { ok: false, error: paths.reason ?? "the bridge runtime is unavailable" };
 
@@ -156,4 +167,14 @@ export function stopBridge(): void {
 
 export function bridgeRunning(): boolean {
   return !!child && child.exitCode === null;
+}
+
+/** True when a bridge answers on this port, whoever started it. */
+async function probeHealth(port: number): Promise<boolean> {
+  try {
+    const res = await fetch(`http://127.0.0.1:${port}/health`, { signal: AbortSignal.timeout(1200) });
+    return res.ok;
+  } catch {
+    return false;
+  }
 }

@@ -163,8 +163,3 @@ export function tokenize(src: string): Token[] {
   push("eof", "", line, col);
   return tokens;
 }
-
-/** Strip comments and blank lines; used by the header scanner. */
-export function significant(tokens: readonly Token[]): Token[] {
-  return tokens.filter((t) => t.type !== "comment");
-}

@@ -1,13 +1,36 @@
-# Testing the MT5 bridge
+# Testing the MT5 bridge (v2)
 
 Three things get tested, in this order. Each one is separate on purpose, because a failure in
 step 1 makes steps 2 and 3 pointless, and mixing them hides which one broke.
 
 | Step | Where | What it proves |
 |---|---|---|
-| 1 | your Windows machine | the bridge can see your broker's data |
-| 2 | your Windows machine | the HTTP endpoints answer correctly |
-| 3 | this app | it can use what the bridge returns |
+| 1 | your Windows machine | the bridge's code is healthy (works even with no terminal) |
+| 2 | your Windows machine | the HTTP endpoints answer, the login path works |
+| 3 | this app | Connect performs the real login and the chart fills |
+
+## How login actually works (measured against a real IC Markets account)
+
+The MetaTrader5 package's own terminal launch is NOT used: measured, its IPC handshake
+gives up (`-10005 IPC timeout`) long before a cold terminal finishes booting, while the
+terminal it spawned keeps booting and logs in on its own seconds later. So the bridge
+launches the terminal itself (`Popen`), hides its windows while it boots (matched by
+process name — the main window is titled "<login> - <server>…", NOT "MetaTrader 5"),
+and retries `initialize(path, login, password, server)` every 4 s until the terminal is
+ready (a fresh boot measures ~13–16 s end to end, hidden throughout).
+
+Two time facts that cost real debugging:
+
+1. Bar and tick times arrive on the broker SERVER's wall clock (a +3 h EEST server in
+   the measurement), so every stamp is shifted to true UTC before leaving the bridge.
+   The offset is detected from a live TICK (crypto symbols first — 24/7, so weekends
+   cannot starve the detection), because a just-booted terminal's chart history is not
+   synced yet and stale bars produce plausible-looking wrong offsets. Detection retries
+   lazily on /health and /candles until the feeds are up.
+2. `copy_rates_range` interprets the request datetimes on the SERVER clock too, so a
+   true-UTC window is translated (+offset) before the call and the stamps shifted back
+   (−offset) after. Verified against ground truth: the last EURUSD bar of the week
+   lands at 20:56 UTC Friday — the New York close — not at 23:56.
 
 ---
 
@@ -15,9 +38,12 @@ step 1 makes steps 2 and 3 pointless, and mixing them hides which one broke.
 
 - **Windows.** The `MetaTrader5` Python package ships `win_amd64` wheels only (verified on
   PyPI: cp36 through cp314, all Windows). It cannot run on Linux or macOS.
-- **MetaTrader 5 installed and logged in** to your demo account. Log in by hand — that way the
-  bridge never needs your password at all.
-- **Python 3.10–3.14** for Windows, from python.org.
+- **MetaTrader 5 installed.** It does **not** need to be running or logged in anymore — v2
+  logs the terminal in itself, from credentials you type in the app, and then hides the
+  terminal's windows. Log in by hand once only if you prefer that; the bridge also attaches
+  to an already-running terminal when it is on the same account.
+- **Python 3.10–3.14** for Windows — or nothing at all: the repo vendors an isolated runtime
+  at `bridge/python` (CPython 3.11.9 + MetaTrader5), and the app uses that one.
 
 MT4 note: the official Python package is MT5-only. For MT4 there is no equivalent, so an MT4
 account needs an MT5 terminal on the same broker (most brokers provide both).
@@ -29,35 +55,43 @@ account needs an MT5 terminal on the same broker (most brokers provide both).
 Open PowerShell in the project folder and run:
 
 ```powershell
-pip install MetaTrader5
-python bridge\mt5-bridge.py --selftest
+bridge\python\python.exe bridge\mt5-bridge.py --selftest
 ```
 
-It checks, in order:
+(or `python bridge\mt5-bridge.py --selftest` with your own Python, after `pip install MetaTrader5`)
+
+On a machine with **no MetaTrader running** it looks like this — and this is a PASS:
 
 ```
   [PASS] Windows                                    yes
   [PASS] Python 3.11                                cp311
   [PASS] MetaTrader5 package                        imported
-  [PASS] terminal already running and logged in     ICMarkets-Demo #12345678
-  [PASS] symbols visible                            1639 symbols
-  [PASS] EURUSD M1 bars (2024-01-02)                1440 bars
-  [PASS] bar prices plausible                       first open 1.10432
+  [PASS] window-hider sweep is exception-free       0 MetaTrader window(s) processed
+  [PASS] mt5 calls hold the global lock             acquire(blocking=False) failed inside the call, as it must
+  [PASS] server-timezone shift math is exact        5 synthetic cases exact
+  [SKIP] terminal running and logged in             not available ((-6, 'Terminal: Authorization failed')) — data checks need a running terminal; this is not a failure
+
+ALL CHECKS PASSED (7 checked, terminal checks SKIPPED: no running
+terminal on this machine).
 ```
 
-**Every line must say PASS.** The order matters: the first FAIL is the real problem.
+**SKIP is not FAIL.** The first six checks are code checks — the lock that makes the bridge
+thread-safe, the window hider, the timezone math — and they must always say PASS. The
+terminal checks need a running, logged-in terminal; when there is none they say SKIP so the
+diagnostic stays green on a healthy dev box. A diagnostic that fails on a healthy machine
+gets ignored, which is how real failures get ignored too.
+
+With a terminal running and logged in, the skipped checks turn into PASS (symbols, EURUSD M1
+bars, price plausibility, live timezone detection) — that is the only version of the suite
+that exercises the broker data path.
 
 | FAIL on | Meaning | Fix |
 |---|---|---|
 | Windows | you are not on Windows | run it on Windows, or a Windows VM |
-| MetaTrader5 package | not installed | `pip install MetaTrader5` |
-| terminal...logged in | MetaTrader is closed or not logged in | open it and log in |
-| symbols visible | terminal has no account attached | log in again in the terminal |
-| EURUSD M1 bars | broker does not serve that symbol, or history is not downloaded | right-click the chart → *Refresh*, or test another symbol |
-| bar prices plausible | the feed is returning 0 or a nonsense price | check the account is really a *demo* on a live server |
-
-**A pass here does not depend on any of my code being right about your broker** — it is the
-broker's own data through the broker's own terminal.
+| MetaTrader5 package | not installed | use `bridge\python\python.exe`, or `pip install MetaTrader5` |
+| window-hider sweep | a Windows API call went wrong | send the output with your bug report |
+| mt5 calls hold the lock | a code regression | send the output |
+| timezone shift math | a code regression | send the output |
 
 ---
 
@@ -66,74 +100,96 @@ broker's own data through the broker's own terminal.
 Start the bridge:
 
 ```powershell
-python bridge\mt5-bridge.py
+bridge\python\python.exe bridge\mt5-bridge.py
 ```
 
-It prints:
+It prints immediately — v2 binds the HTTP server **before** touching any terminal, so a
+missing or logged-out terminal can no longer kill the bridge at startup:
 
 ```
-connected: ICMarkets-Demo #12345678 (demo)
 bridge listening on http://127.0.0.1:8765
-read-only: this bridge exposes candles and symbols, nothing else
+waiting for POST /login {login, password, server} - no terminal is started until then
+read-only: this bridge exposes candles, symbols, login and shutdown; nothing else
 ```
 
 Then, **in a second PowerShell window**:
 
 ```powershell
-# 1. is it alive?
+# 1. is it alive? connected:false is correct here — nothing is logged in yet
 curl http://127.0.0.1:8765/health
+# -> {"ok": true, "connected": false, "account": null, ... , "serverOffsetSeconds": null}
 
-# expected: {"ok":true,"connected":true,"symbols":1639}
+# 2. the real login (use your DEMO account's values)
+curl -X POST http://127.0.0.1:8765/login -d "{\"login\": 12345678, \"password\": \"...\", \"server\": \"ICMarkets-Demo\"}"
+# -> {"ok": true, "account": "#12345678", "server": "ICMarkets-Demo", "company": "...",
+#     "symbols": 1639, "terminalPid": 4212, "startedByUs": true, "hidden": true}
 
-# 2. does your broker name EURUSD exactly that way?
+# 3. candles, now in TRUE UTC (v1 returned broker-server time)
 curl "http://127.0.0.1:8765/candles?symbol=EURUSD&timeframe=M1&from=1704153600&to=1704239999"
 ```
 
-The second one is the real test. Expected: a long JSON with `candles` and 1440 bars.
+The login is the real test. Three things happen on it, in order:
 
-**If it returns `{"candles":[],"error":"symbol 'EURUSD' not available at this broker"}`** then
-your broker uses a suffix. Most do:
+1. the terminal is located (Program Files, `%LOCALAPPDATA%\Programs`, the registry App Paths
+   key, the MetaQuotes common.ini);
+2. `mt5.initialize(path, login, password, server)` performs the **real credential login** —
+   this is the fix for v1, which accepted credentials and silently ignored them;
+3. the terminal's windows are **hidden** (title/class match, `ShowWindow(SW_HIDE)`), and a
+   watcher re-hides late-appearing windows every 500 ms for 30 s — the terminal creates
+   chart windows seconds after launch. So: a window may flash briefly, then vanish. That is
+   expected. The watcher stops after 30 s, so if you deliberately open MetaTrader later, it
+   stays open.
 
-| Broker style | Example |
-|---|---|
-| no suffix | `EURUSD` |
-| `.` | `EURUSD.` |
-| `#` | `EURUSD#` |
-| `_` | `EURUSD_` |
-| micro/raw | `EURUSD.m`, `EURUSD.r` |
+`/health` now reports `serverOffsetSeconds` — the detected difference between the broker's
+server clock and UTC (typically +7200/+10800 for GMT+2/+3). If detection fails (market
+closed, stale bars) it reports `null` plus a `note`, and candle times are **not** shifted.
+That is deliberate: an unshifted chart is diagnosable; a chart silently shifted by a wrong
+offset is not.
 
-Find yours: in MetaTrader, right-click the symbol in Market Watch → it shows the exact name. Or:
+**Failed login?** The error names the actual cause: wrong password/server gives MetaTrader's
+own `last_error()`, a running terminal on a *different* account says which account it is on,
+and a missing installation lists the places that were searched. The password itself is
+scrubbed from every reply and never logged or written to disk.
 
-```powershell
-curl http://127.0.0.1:8765/symbols
-```
-
-and search the list for `EUR`. This is the single most common reason a bridge "does not work" —
-the error message names the exact symbol that was rejected, so it is diagnosable.
+The broker-suffix trap from v1 still applies — if candles say `symbol 'EURUSD' not available
+at this broker`, check `/symbols` for the exact name your broker uses (`EURUSD.m`,
+`EURUSD#`, …). It is still the single most common "doesn't work".
 
 ---
 
 ## Step 3 — the app
 
-**Not built yet, and I am not going to pretend otherwise.** The adapters and the OANDA URL
-builder exist and are unit-tested, but there is no broker panel in the app yet, so there is no
-button to press.
+Press **Connect** and enter the demo credentials there. That button now performs the real
+login described above: it starts the terminal, logs in, hides the window, and the chart
+fills with that account's candles. `/shutdown` is called automatically when the app quits,
+so neither the python bridge nor a terminal it started leaks into your process list.
 
-What you can test today, without the bridge:
+If you do not have broker credentials, the app's offline/downloaded-data mode works without
+any of this.
 
-1. Open the app → **Replay** → go.
-2. The **دانلود** tab → symbol `GBPUSD`, from `January 2010` to `December 2016`.
-3. Press **Download**. It runs for hours; close the app and reopen it and it resumes.
-4. Press **Choose file…** and pick any CSV/`.bi5`/ZIP you already have.
+---
 
-That is the part that works end to end and is verified.
+## The automated suite
+
+`bridge\test-bridge-http.py` exercises the whole HTTP layer against a stub MetaTrader5
+module — including a regression test that the credentials actually reach
+`mt5.initialize()`, the UTC shift, the 405 read-only policy, and a scan that the password
+never appears in any response:
+
+```powershell
+bridge\python\python.exe bridge\test-bridge-http.py   # 21/21 passed
+```
+
+It runs green on machines with no MetaTrader at all. One caveat: on a machine that has a
+real MetaTrader window open while the suite runs, the window hider will hide it — that is
+its contract; restart the terminal afterwards.
 
 ---
 
 ## When reporting a problem
 
-Send the output of `--selftest` **and** the exact `curl` result. Those two lines say which of
-the three layers failed, and without them the answer is a guess.
+Send the output of `--selftest`, the `/health` body, and the exact login reply. Those three
+say which layer failed; without them the answer is a guess.
 
-Do not send your password. Nothing here needs it — if the terminal is logged in, the bridge
-never asks.
+Do not send your password. Nothing here needs it — if you must test by hand, change the
+demo password afterwards.
